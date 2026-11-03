@@ -108,6 +108,7 @@ public static class M3Verification
 
     private static IEnumerator Verify()
     {
+        if (AudioManager.Instance != null) UnityEngine.Object.DestroyImmediate(AudioManager.Instance.gameObject);
         // All setup exists only in Play Mode memory; no scene or prefab asset is saved.
         for (int i = 0; i < SceneManager.sceneCount; i++)
             foreach (GameObject root in SceneManager.GetSceneAt(i).GetRootGameObjects())

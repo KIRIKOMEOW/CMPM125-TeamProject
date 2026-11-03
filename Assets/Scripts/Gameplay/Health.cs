@@ -57,8 +57,14 @@ public class Health : MonoBehaviour
         Initialize();
     }
 
+    private void OnEnable()
+    {
+        GameFeel.EnabledChanged += OnFeelEnabledChanged;
+    }
+
     private void OnDisable()
     {
+        GameFeel.EnabledChanged -= OnFeelEnabledChanged;
         ClearFeedback();
     }
 
@@ -164,7 +170,7 @@ public class Health : MonoBehaviour
 
     private void StartFlash()
     {
-        if (flashMaterial == null || flashDuration <= 0f)
+        if (!GameFeel.Enabled || flashMaterial == null || flashDuration <= 0f)
             return;
 
         if (flashRoutine != null)
@@ -188,6 +194,14 @@ public class Health : MonoBehaviour
         yield return new WaitForSeconds(flashDuration);
         RestoreMaterials();
         flashRoutine = null;
+    }
+
+    private void OnFeelEnabledChanged(bool enabled)
+    {
+        if (enabled) return;
+        if (flashRoutine != null) StopCoroutine(flashRoutine);
+        flashRoutine = null;
+        RestoreMaterials();
     }
 
     private void ClearFeedback()

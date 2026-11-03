@@ -109,6 +109,7 @@ public static class M1Verification
 
     private static IEnumerator Verify()
     {
+        if (AudioManager.Instance != null) UnityEngine.Object.DestroyImmediate(AudioManager.Instance.gameObject);
         // Changes exist only in Play Mode memory; no scene, prefab or asset is saved.
         for (int i = 0; i < SceneManager.sceneCount; i++)
             foreach (GameObject root in SceneManager.GetSceneAt(i).GetRootGameObjects())

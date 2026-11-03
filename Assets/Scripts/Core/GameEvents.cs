@@ -7,6 +7,7 @@ public static class GameEvents
     public static event Action<int, int> BladesChanged;
     public static event Action<float, float> RecallCooldownChanged;
     public static event Action<int> CoinsChanged;
+    public static event Action<Vector2, int> CoinCollected;
     public static event Action<int, int> WaveStarted;
     public static event Action<int> WaveCleared;
     public static event Action<int> EnemiesRemainingChanged;
@@ -27,6 +28,7 @@ public static class GameEvents
     public static void RaiseBladesChanged(int inHand, int max) => BladesChanged?.Invoke(inHand, max);
     public static void RaiseRecallCooldownChanged(float remaining, float total) => RecallCooldownChanged?.Invoke(remaining, total);
     public static void RaiseCoinsChanged(int total) => CoinsChanged?.Invoke(total);
+    public static void RaiseCoinCollected(Vector2 position, int amount) => CoinCollected?.Invoke(position, amount);
     public static void RaiseWaveStarted(int wave, int totalWaves) => WaveStarted?.Invoke(wave, totalWaves);
     public static void RaiseWaveCleared(int wave) => WaveCleared?.Invoke(wave);
     public static void RaiseEnemiesRemainingChanged(int count) => EnemiesRemainingChanged?.Invoke(count);
@@ -48,6 +50,7 @@ public static class GameEvents
         BladesChanged = null;
         RecallCooldownChanged = null;
         CoinsChanged = null;
+        CoinCollected = null;
         WaveStarted = null;
         WaveCleared = null;
         EnemiesRemainingChanged = null;

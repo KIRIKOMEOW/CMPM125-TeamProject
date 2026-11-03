@@ -109,6 +109,7 @@ public static class M2Verification
 
     private static IEnumerator Verify()
     {
+        if (AudioManager.Instance != null) UnityEngine.Object.DestroyImmediate(AudioManager.Instance.gameObject);
         for (int i = 0; i < SceneManager.sceneCount; i++)
             foreach (GameObject root in SceneManager.GetSceneAt(i).GetRootGameObjects())
                 UnityEngine.Object.DestroyImmediate(root);

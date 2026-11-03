@@ -125,7 +125,12 @@ public class Pickup : MonoBehaviour, IPoolable
         collected = true;
         int collectedSpawnId = spawnId;
         if (Type == PickupType.Coin)
-            manager.AddCoins(Amount);
+        {
+            int amount = Amount;
+            Vector2 position = transform.position;
+            manager.AddCoins(amount);
+            GameEvents.RaiseCoinCollected(position, amount);
+        }
         else
             player.Health.Heal(Amount);
 

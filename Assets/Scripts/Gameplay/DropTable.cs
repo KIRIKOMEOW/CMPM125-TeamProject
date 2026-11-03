@@ -111,7 +111,10 @@ public class DropTable : MonoBehaviour
             return;
         // Missing art/prefabs must not prevent the shop economy from functioning.
         if (!SpawnPickup(coinPrefab, position, PickupType.Coin, amount, player))
+        {
             GameManager.Instance.AddCoins(amount);
+            GameEvents.RaiseCoinCollected(position, amount);
+        }
     }
 
     private bool SpawnPickup(GameObject prefab, Vector2 position, PickupType type, int amount, PlayerController player)
