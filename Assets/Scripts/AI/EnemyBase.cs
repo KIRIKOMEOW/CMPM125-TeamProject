@@ -1,8 +1,11 @@
+using System;
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody2D), typeof(Health))]
 public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
 {
+    public static event Action<EnemyBase, int> Died;
+
     [Header("Enemy Stats")]
     [SerializeField] private EnemyType enemyType = EnemyType.Rusher;
     [SerializeField] private int maxHP = 50;
@@ -173,9 +176,24 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
 
         deathHandled = true;
         int dyingSpawnId = SpawnId;
+        if (DropTable.Instance != null)
+            DropTable.Instance.Drop(transform.position, enemyType);
+        if (SpawnId != dyingSpawnId || !spawned)
+            return;
+
+        Died?.Invoke(this, dyingSpawnId);
+        if (SpawnId != dyingSpawnId || !spawned)
+            return;
+
         GameEvents.RaiseEnemyKilled(transform.position, enemyType);
         if (SpawnId == dyingSpawnId && spawned)
             Despawn();
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetSubscribers()
+    {
+        Died = null;
     }
 
     protected virtual void OnValidate()

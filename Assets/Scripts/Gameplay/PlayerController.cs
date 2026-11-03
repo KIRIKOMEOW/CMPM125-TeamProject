@@ -19,6 +19,12 @@ public class PlayerController : MonoBehaviour, IDamageable
     [SerializeField] private float throwInterval = 0.3f;
     [SerializeField] private float spawnOffset = 0.45f;
 
+    [Header("Upgrade Effects")]
+    [SerializeField] private float throwRatePerLevel = 0.15f;
+    [SerializeField] private int damagePerLevel = 10;
+    [SerializeField] private int maxHPPerLevel = 25;
+    [SerializeField] private float moveSpeedPerLevel = 0.1f;
+
     [Header("References")]
     [SerializeField] private Camera aimCamera;
     [SerializeField] private SpriteRenderer bodySprite;
@@ -35,6 +41,10 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float throwRemaining;
     private float knockbackRemaining;
     private int startingMaxHP;
+    private float startingMoveSpeed;
+    private float startingThrowInterval;
+    private int startingBladeDamage;
+    private int startingMaxBlades;
     private bool hasSpeedParameter;
     private bool hasThrowParameter;
     private bool hasHurtParameter;
@@ -43,6 +53,11 @@ public class PlayerController : MonoBehaviour, IDamageable
     public Health Health { get; private set; }
     public int BladesInHand { get; private set; }
     public int MaxBlades => maxBlades;
+    public float MoveSpeed => moveSpeed;
+    public float ThrowInterval => throwInterval;
+    public int BladeDamage => bladeDamage;
+    public bool FanThrowAvailable => false;
+    public bool FanThrowUnlocked { get; private set; }
     public Vector2 AimDirection { get; private set; } = Vector2.right;
 
     private bool IsPlaying => GameManager.Instance != null && GameManager.Instance.State == GameState.Playing;
@@ -54,6 +69,10 @@ public class PlayerController : MonoBehaviour, IDamageable
         recall = GetComponent<BladeRecall>();
         spawnPosition = transform.position;
         startingMaxHP = Health.MaxHP;
+        startingMoveSpeed = moveSpeed;
+        startingThrowInterval = throwInterval;
+        startingBladeDamage = bladeDamage;
+        startingMaxBlades = maxBlades;
         BladesInHand = maxBlades;
         body.gravityScale = 0f;
         body.freezeRotation = true;
@@ -68,6 +87,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     {
         Health.Damaged += OnDamaged;
         GameEvents.GameStateChanged += OnGameStateChanged;
+        GameEvents.RunReset += ResetUpgrades;
         waitForMouseRelease = true;
     }
 
@@ -75,6 +95,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     {
         Health.Damaged -= OnDamaged;
         GameEvents.GameStateChanged -= OnGameStateChanged;
+        GameEvents.RunReset -= ResetUpgrades;
         moveInput = Vector2.zero;
     }
 
@@ -210,6 +231,7 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     public void ResetForNewRun()
     {
+        ResetUpgrades();
         recall.ResetRecall();
         resetBlades.Clear();
         resetBlades.AddRange(activeBlades);
@@ -237,6 +259,24 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (hasThrowParameter) animator.ResetTrigger("Throw");
         if (hasHurtParameter) animator.ResetTrigger("Hurt");
         PublishStatus();
+    }
+
+    public void ApplyUpgrades(int throwRateLevel, int damageLevel, int maxHPLevel, int moveSpeedLevel, bool fanUnlocked)
+    {
+        throwInterval = startingThrowInterval / (1f + Mathf.Clamp(throwRateLevel, 0, 3) * throwRatePerLevel);
+        bladeDamage = startingBladeDamage + Mathf.Clamp(damageLevel, 0, 3) * damagePerLevel;
+        moveSpeed = startingMoveSpeed * (1f + Mathf.Clamp(moveSpeedLevel, 0, 2) * moveSpeedPerLevel);
+        FanThrowUnlocked = fanUnlocked && FanThrowAvailable;
+        int upgradedMaxHP = startingMaxHP + Mathf.Clamp(maxHPLevel, 0, 3) * maxHPPerLevel;
+        // Reapplying damage/rate/speed upgrades must not heal an injured player.
+        if (Health.MaxHP != upgradedMaxHP)
+            Health.ResetHealth(upgradedMaxHP);
+    }
+
+    private void ResetUpgrades()
+    {
+        ApplyUpgrades(0, 0, 0, 0, false);
+        maxBlades = startingMaxBlades;
     }
 
     public void PublishStatus()
@@ -268,5 +308,9 @@ public class PlayerController : MonoBehaviour, IDamageable
         bladeKnockback = Mathf.Max(0f, bladeKnockback);
         throwInterval = Mathf.Max(0.01f, throwInterval);
         spawnOffset = Mathf.Max(0f, spawnOffset);
+        throwRatePerLevel = Mathf.Max(0f, throwRatePerLevel);
+        damagePerLevel = Mathf.Max(0, damagePerLevel);
+        maxHPPerLevel = Mathf.Max(0, maxHPPerLevel);
+        moveSpeedPerLevel = Mathf.Max(0f, moveSpeedPerLevel);
     }
 }

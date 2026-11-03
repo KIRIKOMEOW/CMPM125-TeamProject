@@ -43,3 +43,27 @@
 - 已处理 REVIEW_M1 的第 1、2、4 条：跟踪 Unity 生成的元数据；重开直接第 1 波、回菜单完整重置；从菜单恢复时等待左键释放后才能输入投掷。
 - 同步 API、交接说明和 M1 自动验证；第 3 条的刃/箱子物理交互明确留到 M3。
 - 更新后的 M1Verification 已通过（退出码 0），新增鼠标释放门控、直接重开第 1 波、暂停/胜利后回菜单完整重置检查；Unity 编译退出 0，C# 错误/警告均为 0。修复单独提交后继续 M2。
+
+## 2026-11-03 — M2 波次与经济
+
+### 已实现
+
+- WaveSpawner 协程：预算 4+3×波次，首批立即、之后每 1.5 秒，默认每批 3；每次选距玩家至少 8 单位的启用刷怪点。没有安全点或有效 Rusher 时保留预算等待。
+- 待生成+存活敌人计数、SpawnId 唯一死亡结算、波次计时、暂停冻结、RunReset 清理。后续类型配置有效时，Guard 从第 3 波、Brute 从第 6 波至少各一只，剩余预算随机填满；M2 只需 Rusher。
+- EnemyBase 死亡先 DropTable.Drop，再 Died 计数，再 EnemyKilled 表现事件，最后回池；重置/普通回池不发奖励。
+- DropTable：基础金币 2/4/10、15% 额外拾取物、血量 <40% 血包权重×3、无伤后下一波金币×1.5；缺金币资源时直接入账。
+- Pickup：金币吸附/血包回血/池化复用与防重复拾取，进入 Shop/Victory 收取剩余金币，清场不发奖励。
+- UpgradeSystem：完整约定接口、各项价格/上限、Shop 状态与资金/血量检查、成功事件、重置等级。FanThrow 保留 80 价格和一级上限，M5 实际技能完成前禁购。
+- PlayerController.ApplyUpgrades：从缓存初值计算射速/伤害/移速/最大 HP；MaxHP 每级+25并满血，其他升级不回血，RunReset/重开恢复初值与五把刃。
+- M2Verification：针对上述经济、波次、随机权重边界和重置流程的独立 Play Mode 验证。测试只创建内存物体，不保存场景或预制体。
+
+### 验证与限制
+
+- M1 审查修复已单独提交为 d6fabad；更新后的 M1 Play Mode 验证通过，修复阶段编译 0 错误/0 C# 警告。
+- M2 首次 batchmode 编译退出 0、无 C# 错误/警告。后续本项目被 Unity 编辑器打开，新 M2 Play Mode 批处理未能启动，尚未验证通过；已请求用户检查 Console/保存并关闭后补跑。当前 `Logs/Editor.log` 的 C# 错误/警告均为 0，Assembly-CSharp 与 Assembly-CSharp-Editor 产物均晚于对应最新源码，确认最新运行时代码及验证脚本已被打开的编辑器编译。
+- 两名代理独立审查波次/经济/升级接线，未发现正常流程阻塞；正常流程要求 WaveSpawner 始终启用，敌人只通过死亡/整局重置回池。
+- API/REQUESTS 已更新；所有 .cs 与 Unity 自动生成的对应 .meta 将一起提交，稳定预制体 GUID。
+- 正式场景/预制体、UI、输入焦点、实际碰撞矩阵、美术音效与数值手感仍需前端配置和 Playtest；没有提前执行 M3 的物理道具/Guard AI。
+- 并行工作出现 Packages/manifest.json、Packages/packages-lock.json 的改动，以及未跟踪的 ProjectSettings/PackageManagerSettings.asset、Docs/REVIEW_M1.md；后端未编辑或纳入这些文件。提交仅包含后端脚本/对应元数据与维护文档。
+
+M2 代码交付后停下等待审查；自动验证待项目关闭后运行 API 所列 M2Verification.Run，并再跑 M1Verification.Run 检查整体回归。

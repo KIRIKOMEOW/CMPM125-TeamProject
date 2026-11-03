@@ -18,3 +18,13 @@
 - 第 2 条覆盖上文的旧交接说明：RestartGame 完整重置后直接开始第 1 波；ReturnToMainMenu 完整重置后进入主菜单。
 - 第 4 条已为每次进入 Playing 添加左键释放门控；UI 清理 EventSystem 选中状态仍由前端负责。
 - 第 3 条按用户要求留到 M3：非 IDamageable 的动态刚体接受冲量，Prop 层挡住出刃，停留的刃跟随命中刚体，回收/回池解除父子关系；回收仍穿透。
+
+## 2026-11-03 — M2 交接
+
+- 请在始终启用的管理物体上新增 WaveSpawner、DropTable、UpgradeSystem（各一个）。WaveSpawner 配 Rusher Prefab 和距玩家可达 8 单位以上的刷怪点；Guard/Brute 待对应里程碑再拖。可拖 Player 以在编辑状态看绿/红 Gizmos。
+- 请新增 Coin、Health 两种 Pickup 预制体并拖到 DropTable；组件/碰撞体/建议 Layer 见 API。默认血包 25、额外金币 1、吸附半径/速度 12，均为策划案未指定的可调手感值。
+- 商店可用约定的 UpgradeSystem 接口查询价格/等级/可购性并购买，成功监听 UpgradePurchased、CoinsChanged、PlayerHealthChanged。FanThrow 的价格/上限已提供，但 M5 前暂禁购，可先隐藏该项。
+- 敌人数 HUD 包含待生成 + 存活敌人。金币进入 Shop/Victory 时自动结算剩余拾取物，防止暂停导致购物缺钱；血包保留到后续战斗或重置。
+- REVIEW_M1 的三项 M2 附带要求已接入：PlayerController.ApplyUpgrades 及原值恢复、MaxHP +25 满血和血量事件、死亡接 DropTable 与唯一清波计数。
+- 保持波次管理器全程启用，勿在正常战斗中直接 Pool.Return 活敌人；杀死敌人走 IDamageable，清场走 GameManager 的重开/回菜单。
+- 第 3 条飞刃/箱子物理交互仍留在 M3；未提前改动前端 Layer/场景/预制体。

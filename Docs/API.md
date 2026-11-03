@@ -1,6 +1,6 @@
 # Night Shift 后端 API 与配置
 
-当前范围：M1 核心。数值依据 `Docs/DesignDoc.md`。M2–M5 尚未实现；不要把预留事件当作已有波次、商店、掉落或音频系统。
+当前范围：M1 核心 + M2 波次和经济。数值依据 `Docs/DesignDoc.md`；重开/回菜单行为以已批准的 `Docs/REVIEW_M1.md` 为准。M3–M5 尚未实现。
 
 所有类均在全局命名空间。只使用旧 Input Manager；游戏物体不靠 Tag 识别。HUD/菜单/特效应在 `OnEnable` 订阅 `GameEvents`，在 `OnDisable` 取消订阅。
 
@@ -12,7 +12,7 @@ public enum EnemyType { Rusher, GuardBot, Brute }
 public enum UpgradeType { ThrowRate, Damage, MaxHP, MoveSpeed, FanThrow, Heal }
 ```
 
-`UpgradeType` 先行定义，以便前端编译事件接线；`UpgradeSystem` 在 M2 实现。`GameState.cs` 包含上述三个枚举，无需挂组件。
+`GameState.cs` 包含上述三个枚举，无需挂组件。UpgradeSystem 已实现；FanThrow 的购买入口暂不可用，实际扇形攻击按计划在 M5 实现。
 
 ## GameEvents
 
@@ -24,15 +24,15 @@ public enum UpgradeType { ThrowRate, Damage, MaxHP, MoveSpeed, FanThrow, Heal }
 | BladesChanged | `Action<int,int>` inHand, max | 投刃、归还、重置、主动发布 |
 | RecallCooldownChanged | `Action<float,float>` remaining, total | 回收冷却逐帧及结束的 `(0,total)`；暂停时数值不减少 |
 | CoinsChanged | `Action<int>` total | 初始化、增减金币、重置 |
-| WaveStarted | `Action<int,int>` wave, totalWaves | 开始一波；M2 刷怪器接入点 |
+| WaveStarted | `Action<int,int>` wave, totalWaves | 开始一波；刷怪器/掉落奖励状态开始新波次 |
 | WaveCleared | `Action<int>` wave | 本波完成，开始 3 秒过渡 |
-| EnemiesRemainingChanged | `Action<int>` count | M1 重置为 0；实际计数由 M2 产生 |
-| WaveTimerChanged | `Action<float>` elapsedSeconds | M1 重置为 0；逐帧计时由 M2 产生 |
+| EnemiesRemainingChanged | `Action<int>` count | 待生成 + 存活敌人总数；重置为 0 |
+| WaveTimerChanged | `Action<float>` elapsedSeconds | 战斗波次逐帧计时；暂停/清波后不增加，重置为 0 |
 | GameStateChanged | `Action<GameState>` | 初始主菜单和状态变化 |
-| UpgradePurchased | `Action<UpgradeType,int>` type, newLevel | M2 预留 |
+| UpgradePurchased | `Action<UpgradeType,int>` type, newLevel | 商店购买成功；Heal 的 level 是本局购买次数 |
 | BladeThrown | `Action<Vector2>` position | 成功投出一把刃 |
 | EnemyHit | `Action<Vector2,bool>` position, fromRecall | 敌人实际接受伤害 |
-| EnemyKilled | `Action<Vector2,EnemyType>` position, type | 死亡结算一次；归还对象池前 |
+| EnemyKilled | `Action<Vector2,EnemyType>` position, type | 掉落与敌人计数结算后、归还对象池前，供表现层使用 |
 | PlayerHit | `Action<Vector2>` position | 玩家实际接受伤害 |
 | BarrelExploded | `Action<Vector2>` position | M3 预留 |
 | RecallStarted | `Action` | 成功启动一轮回收 |
@@ -58,9 +58,9 @@ public enum UpgradeType { ThrowRate, Damage, MaxHP, MoveSpeed, FanThrow, Heal }
 | `AddCoins(int amount)` | 忽略非正数；限制整数溢出并发 CoinsChanged |
 | `CompleteWave(int wave)` | M2 刷怪器报告本波全部完成；重复/过期报告被忽略；等待 3 秒游戏时间后 Shop，波次 10 则 Victory |
 
-除 Playing 外时间倍率为 0；暂停期间波次过渡也暂停。玩家 HP 归零进入 GameOver。重置顺序为：MainMenu → RunReset → 池中对象全部归还 → 停用未池化的场景敌人 → 玩家恢复初始状态 → 清零波次、金币和 HUD 计数。M2/M3 将通过 RunReset 清理升级、掉落和道具；目前没有这些系统。
+除 Playing 外时间倍率为 0；暂停期间波次过渡也暂停。玩家 HP 归零进入 GameOver。重置顺序为：MainMenu → RunReset → 池中对象全部归还 → 停用未池化的场景敌人 → 玩家恢复初始状态 → 清零波次、金币和 HUD 计数。RunReset 会清理刷怪计划、升级、奖励倍率与待拾取物；M3 再接场景道具。RestartGame 完成此流程后立即开始第 1 波。
 
-**M1 不自动生成敌人，也不自动判定清波。** `StartGame` 会清除手工摆放的测试敌人；测试时应在开始后从池中取 Rusher。正式生成由 M2 `WaveSpawner` 负责。
+场景须配置 WaveSpawner 才会自动刷怪/清波。`StartGame` 会清除手工摆放的测试敌人；正式战斗由 WaveSpawner 生成。仅手工从池中取出的敌人不会纳入当前刷怪器的清波计数。
 
 ## PoolManager / IPoolable
 
@@ -119,6 +119,14 @@ Health 公开只读属性：`CurrentHP`、`MaxHP`、`IsDead`、`IsInvulnerable`�
 
 公开只读属性：`Health Health`、`int BladesInHand`、`int MaxBlades`、`Vector2 AimDirection`。公开方法：`bool TryThrow()`（状态/数量/间隔/引用允许时投掷）、`TakeDamage(DamageInfo info)`、`ResetForNewRun()`（归还自身刃、恢复 Awake 记录的位置/初始 HP 与刃数、清冷却和速度）、`PublishStatus()`（血量/刃数/回收 HUD 快照）。输入和伤害仅 Playing 时生效；GameManager 统一调用重置。
 
+M2 新增只读属性：`MoveSpeed`、`ThrowInterval`、`BladeDamage`、`FanThrowAvailable`、`FanThrowUnlocked`。新增公开方法：
+
+```csharp
+public void ApplyUpgrades(int throwRateLevel, int damageLevel, int maxHPLevel, int moveSpeedLevel, bool fanUnlocked);
+```
+
+UpgradeSystem 传入本局各项总等级。以 Awake 记录的 Inspector 原值为基础计算，重复应用不会叠加：投掷间隔 `base / (1 + 0.15 × level)`，伤害 `base + 10 × level`，移速 `base × (1 + 0.1 × level)`，最大 HP `base + 25 × level`。最大 HP 改变时 ResetHealth 并满血；其他购买不会意外回血。RunReset 和 ResetForNewRun 都恢复原值。刃上限保持初始 5（没有增加容量的商店商品）。FanThrowAvailable 暂为 false；前端可隐藏该商品，不能购买无实际效果的解锁。
+
 ## Blade / BladeRecall
 
 刃预制体根对象挂 Blade、Rigidbody2D、CircleCollider2D；Collider 建议 Radius 0.1、Offset `(0,0)`。脚本设 Rigidbody2D 为 Kinematic、零重力、冻结 Z 旋转，Collider 为 Trigger。精灵/拖尾由前端配置。建议 Layer `Blade`，不需要依赖 Trigger 回调命中，因为脚本每个物理步沿移动路径 CircleCast，避免高速穿透薄物体。
@@ -143,12 +151,77 @@ EnemyBase 为抽象基类，不单独挂载；Rusher 只挂 RusherAI（继承所
 
 公开只读属性：`EnemyType Type`、`Health Health`、`int SpawnId`（每次生成递增）、`float MoveSpeed`、`bool IsRooted`。公开方法：`Initialize(int wave, PlayerController player)`（生成后设置波次/目标）、`TakeDamage(DamageInfo info)`、`ApplyRoot(float duration)`、`Despawn()`、`OnSpawn()`、`OnDespawn()`。池自动调用后两项，调用方不要再次调用。
 
-Rusher 直线追逐，接触 PlayerController 时走 IDamageable 造成 10 伤害，玩家无敌帧防止每个物理帧扣血。击退使用 AddForce，并短暂让物理接管移动。定身冻结移动，可延长至更晚的结束时间。死亡发 EnemyKilled 一次后回池，回池不会发死亡事件。M2 尚未接 DropTable，因此 M1 击杀没有掉落。
+Rusher 直线追逐，接触 PlayerController 时走 IDamageable 造成 10 伤害，玩家无敌帧防止每个物理帧扣血。击退使用 AddForce，并短暂让物理接管移动。定身冻结移动，可延长至更晚的结束时间。
+
+M2 死亡顺序：DropTable.Drop → `EnemyBase.Died` → GameEvents.EnemyKilled → 回池。新增 `public static event Action<EnemyBase,int> Died`（enemy, spawnId）仅供后端按生成身份计数；UI/特效仍监听 GameEvents。WaveSpawner 只通过 Died 计数，避免同次死亡重复减数。重置/普通回池不产生死亡奖励；请勿在正常战斗中绕过死亡逻辑直接归还由刷怪器管理的敌人。
+
+## WaveSpawner
+
+在场景始终启用的管理物体上挂一个 WaveSpawner；不需要物理组件。拖 `Rusher Prefab`（RusherAI 组件）、`Spawn Points`（一组空 Transform）。`Guard Bot Prefab` / `Brute Prefab` 先留空，等 M3/M5 完成后接入；对应 Enemy Type 必须正确。`Player` 可选，供编辑状态 Gizmos 预览，开波时优先使用 GameManager.Player。
+
+- 波次预算 `4 + 3 × wave`；Rusher/Guard/Brute 花费 1/2/4。有效 Guard 从第 3 波、Brute 从第 6 波开始，每波先保证各一只，再随机使用剩余预算；未接后续类型时以现有类型填满预算。
+- `Spawn Interval = 1.5` 秒游戏时间，首批立即生成。`Enemies Per Burst = 3` 是策划案未指定的可调默认值。
+- `Minimum Spawn Distance = 8`，每个敌人生成前重新筛选距离玩家 ≥8 且启用的刷怪点。无合法点就等待重试，保留全部预算，不在近处强行生成。
+- Rusher 是确保任何预算余数都能填满的必要引用；缺失/类型不匹配时保留计划等待，不错误清波。完全未配置时 HUD 暂显示按 Rusher 数量估计的预算；引用有效后显示实际敌人数。
+- Gizmos：合法点绿圈，过近/禁用/无玩家参考的点红圈；不修改项目 Layer/Tag。
+
+公开只读属性：`CurrentWave`、`WaveBudget`、`PendingEnemies`、`ActiveEnemies`、`RemainingEnemies`、`ElapsedTime`、`IsWaveActive`。无需手动调用开波方法，监听 GameEvents.WaveStarted 自动启动协程。
+
+RemainingEnemies = 待生成 + 存活；只有计划全部生成且本刷怪器追踪的敌人全部死亡才调用 GameManager.CompleteWave。以 EnemyBase 实例 + SpawnId 计数，每次死亡只减一次。暂停时生成/计时冻结，清波后停止计时，3 秒过渡由 GameManager 负责。RunReset 先停止协程/清账，再由 PoolManager 归还实例。不要在战斗中禁用此管理物体或直接回收它追踪的活敌人。
+
+## DropTable
+
+场景挂一个 DropTable 单例，放在始终启用的管理物体。公开 `static DropTable Instance`、只读 `float CurrentCoinMultiplier`，以及 `void Drop(Vector2 position, EnemyType type)`；EnemyBase 死亡自动调用一次，前端不要再次发奖励。
+
+拖 `Coin Prefab` / `Health Prefab`，两种预制体都按下节配置 Pickup。字段默认：Rusher/Guard/Brute 基础金币 2/4/10；Extra Pickup Chance 0.15；Low Health Threshold 0.4；Low Health Weight Multiplier 3；Perfect Wave Coin Multiplier 1.5。
+
+策划案未定的可调值：额外金币 1、血包回血 25、金币/血包基础权重各 1。额外掉落先抽 15% 概率，再按权重选种类；血量严格低于 40% 时血包权重乘 3，所以额外拾取物中血包占比由 50% 变为 75%。金币金额乘当前倍率后取整。
+
+无伤记录只统计本波有效 PlayerHit；WaveCleared 锁定结果，奖励在紧接着的下一波开始时生效。第 1 波/重开倍率为 1，当前波倍率不会因本波是否受伤即时改变。最后一只敌人先生成掉落再报告清波，避免错用下一波的奖励状态。
+
+缺金币预制体、PoolManager 或 Pickup 组件时，直接记入对应金币作为接线未完成时的后备；缺血包预制体则安全跳过该次额外血包。正式表现需要前端把引用配齐。
+
+## Pickup
+
+金币与血包各建一个外观预制体，根物体均挂 Pickup + Rigidbody2D + CircleCollider2D；建议 Collider Radius 0.2、Offset 0。脚本设置 Kinematic、Gravity Scale 0、Freeze Rotation、Trigger。建议 Layer `Pickup`，与 Player 触发；无需 Tag。精灵/动画由前端配置。
+
+```csharp
+public enum PickupType { Coin, Health }
+public PickupType Type { get; }
+public int Amount { get; }
+public void Initialize(PickupType type, int amount, PlayerController player);
+public bool TryCollect(PlayerController player);
+public void OnSpawn();
+public void OnDespawn();
+```
+
+通常由 DropTable 执行 Pool.Get 后 Initialize，不在 Inspector 指定金额/类型。Coin Attraction 的默认吸附范围 12、速度 12、收集距离 0.35（均为未定手感数值）。金币进入范围后靠近玩家；血包留在原处，接触/靠近时回血，满血不消费血包。成功收集只结算一次并归还对象池。
+
+Shop/Victory 进入时会一次性收取剩余金币，保证时间暂停不会锁住本波收入；血包保留到后续战斗或重置。Paused/MainMenu/GameOver 不允许拾取。重置时普通归还不会发金币或回血。金币声音在 M4 接入。
+
+## UpgradeSystem
+
+场景放一个 UpgradeSystem 单例并保持启用；`Player` 可拖入或自动取 GameManager.Player。无 UI/物理组件依赖。价格和 Heal Amount 可在 Inspector 调整，默认严格按策划案：
+
+| 类型 | 默认效果 | 上限 | 各等级价格 |
+| --- | --- | --- | --- |
+| ThrowRate | 投掷频率 +15%/级 | 3 | 20 / 35 / 55 |
+| Damage | 伤害 +10/级 | 3 | 25 / 40 / 60 |
+| MaxHP | 最大 HP +25/级并满血 | 3 | 20 / 35 / 55 |
+| MoveSpeed | 移速 +10%/级 | 2 | 15 / 30 |
+| FanThrow | M5 解锁扇形投掷；当前禁购 | 1 | 80 |
+| Heal | 回复 50，封顶当前最大 HP | 无限 | 15 |
+
+公开接口：`static UpgradeSystem Instance`、`int GetLevel(UpgradeType t)`、`int GetMaxLevel(UpgradeType t)`（Heal 返回 -1）、`int GetPrice(UpgradeType t)`（满级/无有效价格返回 -1）、`bool CanBuy(UpgradeType t)`、`bool TryBuy(UpgradeType t)`。
+
+CanBuy/TryBuy 要求 Shop 状态、玩家存活、金币足够、未满级；Heal 还要求未满血，FanThrow 还要求功能已可用。TryBuy 成功扣款、应用等级和效果，并触发 CoinsChanged、UpgradePurchased；失败不扣款不升级。Heal 等级代表本局购买次数。RunReset 清零全部等级；UI 进入商店时读取这些方法重建商品显示。
+
+最大 HP 通过 PlayerController.ApplyUpgrades → Health.ResetHealth 应用并触发 PlayerHealthChanged；其他升级不会因重算属性而回血。伤害由投刃时记录，已投出的刃保持当次投掷的伤害，升级影响之后的投掷。
 
 ## 后续里程碑
 
-- M2：WaveSpawner、DropTable、Pickup、UpgradeSystem、实际敌人数/计时/波次推进与经济循环。
 - M3：GuardBotAI、EnemyProjectile、ExplosiveBarrel、Crate。
+- M3 同时落实 REVIEW_M1 第 3 条：飞刃推动非 IDamageable 动态刚体、钉在 Prop 后跟随其移动，回收/回池解除父子关系；回收刃仍穿透。
 - M4：CameraShake、HitStop、GameFeel、AudioManager。
 - M5：可选 BruteAI、扇形投掷。
 
@@ -161,6 +234,7 @@ Rusher 直线追逐，接触 PlayerController 时走 IDamageable 造成 10 伤�
 ```powershell
 & 'E:\Unity\6000.6.4f1\Editor\Unity.exe' -batchmode -quit -projectPath 'F:\UCSC\CMPM125\GameplayProject1' -logFile 'F:\UCSC\CMPM125\GameplayProject1\Logs\compile.log'
 & 'E:\Unity\6000.6.4f1\Editor\Unity.exe' -batchmode -projectPath 'F:\UCSC\CMPM125\GameplayProject1' -executeMethod M1Verification.Run -logFile 'F:\UCSC\CMPM125\GameplayProject1\Logs\m1-verification.log'
+& 'E:\Unity\6000.6.4f1\Editor\Unity.exe' -batchmode -projectPath 'F:\UCSC\CMPM125\GameplayProject1' -executeMethod M2Verification.Run -logFile 'F:\UCSC\CMPM125\GameplayProject1\Logs\m2-verification.log'
 ```
 
-第二条不要加 `-quit`，否则会在跨帧检查完成前退出。以退出码 0 和日志中的 `M1_VERIFY PASS` 判断测试通过；失败/超时退出 1。测试使用普通游戏时间验证无敌/冷却/定身和波次等待，同时使用非缩放时间监视暂停与超时。测试从 `M1_VERIFY START` 起捕获所有 Error/Exception/Assert，不屏蔽游戏错误。
+两条 Play Mode 验证命令不要加 `-quit`，否则会在跨帧检查完成前退出。以退出码 0 和日志中的 `M1_VERIFY PASS` / `M2_VERIFY PASS` 判断测试通过；失败/超时退出 1。测试使用普通游戏时间验证计时逻辑，同时使用非缩放时间监视暂停与超时。测试从对应 START 标记起捕获所有 Error/Exception/Assert，不屏蔽游戏错误。
