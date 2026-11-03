@@ -23,6 +23,7 @@ public class WaveSpawner : MonoBehaviour
     private readonly List<EnemyBase> spawnPlan = new List<EnemyBase>();
     private readonly List<EnemyBase> choices = new List<EnemyBase>(3);
     private readonly Dictionary<EnemyBase, int> liveEnemies = new Dictionary<EnemyBase, int>();
+    private readonly HashSet<Transform> usedSpawnPoints = new HashSet<Transform>();
     private Coroutine spawnRoutine;
     private int nextSpawn;
     private int unplannedBudget;
@@ -142,6 +143,7 @@ public class WaveSpawner : MonoBehaviour
         if (PoolManager.Instance == null)
             return;
 
+        usedSpawnPoints.Clear();
         for (int i = 0; i < enemiesPerBurst && nextSpawn < spawnPlan.Count; i++)
         {
             if (version != waveVersion || !IsWaveActive || !TryGetSpawnPosition(out Vector2 position))
@@ -175,16 +177,23 @@ public class WaveSpawner : MonoBehaviour
             return false;
 
         int eligibleCount = 0;
+        Transform selectedPoint = null;
         foreach (Transform point in spawnPoints)
         {
-            if (!IsPointEligible(point, player.transform.position))
+            if (usedSpawnPoints.Contains(point) || !IsPointEligible(point, player.transform.position))
                 continue;
 
             eligibleCount++;
             if (Random.Range(0, eligibleCount) == 0)
-                position = point.position;
+                selectedPoint = point;
         }
-        return eligibleCount > 0;
+        if (selectedPoint == null)
+            return false;
+
+        // Sparse arenas spawn smaller bursts instead of stacking multiple bodies at one point.
+        usedSpawnPoints.Add(selectedPoint);
+        position = selectedPoint.position;
+        return true;
     }
 
     private bool IsPointEligible(Transform point, Vector2 playerPosition)
@@ -236,6 +245,7 @@ public class WaveSpawner : MonoBehaviour
         planReady = false;
         spawnPlan.Clear();
         liveEnemies.Clear();
+        usedSpawnPoints.Clear();
         nextSpawn = 0;
         unplannedBudget = 0;
         CurrentWave = 0;

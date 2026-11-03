@@ -8,7 +8,7 @@ public class DropTable : MonoBehaviour
     [SerializeField] private GameObject healthPrefab;
 
     [Header("Enemy Rewards")]
-    [SerializeField] private int rusherCoins = 2;
+    [SerializeField] private int rusherCoins = 3;
     [SerializeField] private int guardBotCoins = 4;
     [SerializeField] private int bruteCoins = 10;
 

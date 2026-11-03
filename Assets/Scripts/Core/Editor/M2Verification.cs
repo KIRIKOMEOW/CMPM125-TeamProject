@@ -183,11 +183,15 @@ public static class M2Verification
         RusherAI brute = EnemyTemplate("M2 Brute Cost Fixture", EnemyType.Brute);
         Transform point = new GameObject("M2 Spawn Point").transform;
         point.position = new Vector2(7f, 0f);
+        Transform secondPoint = new GameObject("M2 Second Spawn Point").transform;
+        secondPoint.position = new Vector2(-7f, 0f);
+        Transform thirdPoint = new GameObject("M2 Third Spawn Point").transform;
+        thirdPoint.position = new Vector2(0f, 7f);
         WaveSpawner spawner = new GameObject("M2 WaveSpawner").AddComponent<WaveSpawner>();
         SetField(spawner, "rusherPrefab", rusher);
         SetField(spawner, "guardBotPrefab", guard);
         SetField(spawner, "brutePrefab", brute);
-        SetField(spawner, "spawnPoints", new[] { point });
+        SetField(spawner, "spawnPoints", new[] { point, secondPoint, thirdPoint });
         SetField(drops, "extraPickupChance", 0f);
         manager.StartGame();
         Assert(spawner.WaveBudget == 7 && spawner.RemainingEnemies == 7 && spawner.PendingEnemies == 7
@@ -199,6 +203,8 @@ public static class M2Verification
         manager.PauseGame();
         float pausedTimer = spawner.ElapsedTime;
         point.position = new Vector2(8f, 0f);
+        secondPoint.position = new Vector2(-8f, 0f);
+        thirdPoint.position = new Vector2(0f, 8f);
         realUntil = EditorApplication.timeSinceStartup + 0.15d;
         while (EditorApplication.timeSinceStartup < realUntil)
             yield return null;
@@ -235,7 +241,8 @@ public static class M2Verification
         while (manager.State == GameState.Playing)
             yield return null;
         Assert(manager.State == GameState.Shop && spawner.RemainingEnemies == 0 && !spawner.IsWaveActive
-            && manager.Coins == 16, "Seven tracked kills and one unrelated kill reward gold once before Shop.");
+            && manager.Coins == 24, "Seven tracked kills and one unrelated kill each reward three gold once before Shop.");
+        Assert(upgrades.CanBuy(UpgradeType.MoveSpeed), "Wave-one income can afford the first movement upgrade.");
 
         SetField(spawner, "spawnInterval", 0.02f);
         manager.CloseShopAndStartNextWave();
@@ -249,8 +256,8 @@ public static class M2Verification
             KillActiveEnemies();
             yield return null;
         }
-        Assert(manager.State == GameState.Shop && manager.Coins == 46,
-            "Wave 2 grants three coins per Rusher with no duplicate death/drop counting.");
+        Assert(manager.State == GameState.Shop && manager.Coins == 64,
+            "Wave 2 rounds boosted Rusher rewards to four coins without duplicate death/drop counting.");
         manager.CloseShopAndStartNextWave();
         Assert(Approximately(drops.CurrentCoinMultiplier, 1f), "Taking damage removes the next wave's coin bonus.");
 
@@ -284,6 +291,27 @@ public static class M2Verification
             yield return null;
         Assert(spawner.PendingEnemies == 7 && spawner.ActiveEnemies == 0 && manager.State == GameState.Playing,
             "A missing mandatory prefab waits safely instead of clearing a free wave.");
+        manager.ReturnToMainMenu();
+
+        SetField(spawner, "rusherPrefab", rusher);
+        SetField(spawner, "spawnPoints", new[] { point, secondPoint, thirdPoint });
+        manager.StartGame();
+        EnemyBase[] burst = UnityEngine.Object.FindObjectsByType<EnemyBase>();
+        Assert(burst.Length == 3 && spawner.PendingEnemies == 4 && spawner.RemainingEnemies == 7,
+            "A separated first burst preserves its full wave budget.");
+        for (int i = 0; i < burst.Length; i++)
+        {
+            Assert(Vector2.Distance(burst[i].transform.position, player.transform.position) >= 7.999f,
+                "Distinct spawn-point selection retains the eight-unit safety boundary.");
+            for (int j = i + 1; j < burst.Length; j++)
+                Assert(Vector2.Distance(burst[i].transform.position, burst[j].transform.position) > 0.01f,
+                    "A burst uses distinct spawn points when enough safe points are available.");
+        }
+        manager.ReturnToMainMenu();
+        SetField(spawner, "spawnPoints", new[] { point, point });
+        manager.StartGame();
+        Assert(spawner.ActiveEnemies == 1 && spawner.PendingEnemies == 6 && spawner.RemainingEnemies == 7,
+            "A single unique safe point caps the burst instead of overlapping enemies or discarding budget.");
         manager.ReturnToMainMenu();
     }
 
@@ -368,7 +396,7 @@ public static class M2Verification
         {
             SetField(drops, "extraPickupChance", 0f);
             EnemyType[] types = { EnemyType.Rusher, EnemyType.GuardBot, EnemyType.Brute };
-            int[] amounts = { 2, 4, 10 };
+            int[] amounts = { 3, 4, 10 };
             for (int i = 0; i < types.Length; i++)
             {
                 drops.Drop(new Vector2(100f, 0f), types[i]);
@@ -414,7 +442,7 @@ public static class M2Verification
             SetField(drops, "coinPrefab", null);
             int fallbackBefore = manager.Coins;
             drops.Drop(new Vector2(100f, 0f), EnemyType.Rusher);
-            Assert(manager.Coins == fallbackBefore + 2, "Missing coin art cannot break guaranteed shop income.");
+            Assert(manager.Coins == fallbackBefore + 3, "Missing coin art cannot break guaranteed shop income.");
             SetField(drops, "coinPrefab", coinTemplate);
             player.Health.ResetHealth(100);
         }
