@@ -624,7 +624,9 @@ public static class NightShiftBuilder
     static Button MakeButton(RectTransform parent, string name, string label, Vector2 position, Vector2 size)
     {
         Image image = Img(parent, name, sprites["ui_button"], Color.white, position, size);
+        image.raycastTarget = true;   // Img() turns raycasts off for decoration; a button must receive clicks.
         Button button = image.gameObject.AddComponent<Button>();
+        button.targetGraphic = image;
         ColorBlock colors = button.colors;
         colors.normalColor = Color.white;
         colors.highlightedColor = new Color(1f, 0.82f, 0.55f);
