@@ -201,13 +201,16 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     private void OnDamaged(DamageInfo info)
     {
-        if (info.knockback.sqrMagnitude > 0f)
-        {
-            body.linearVelocity = Vector2.zero;
-            body.AddForce(info.knockback, ForceMode2D.Impulse);
-            knockbackRemaining = knockbackDuration;
-        }
+        ApplyKnockback(info.knockback);
         if (hasHurtParameter) animator.SetTrigger("Hurt");
+    }
+
+    public void ApplyKnockback(Vector2 impulse)
+    {
+        if (impulse.sqrMagnitude <= 0f || body == null) return;
+        body.linearVelocity = Vector2.zero;
+        body.AddForce(impulse, ForceMode2D.Impulse);
+        knockbackRemaining = knockbackDuration;
     }
 
     internal void CopyRecallableBlades(List<Blade> destination)

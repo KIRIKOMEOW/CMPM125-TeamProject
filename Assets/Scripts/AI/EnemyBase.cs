@@ -24,7 +24,7 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
     private float rootUntil;
     private float knockbackUntil;
 
-    public EnemyType Type => enemyType;
+    public virtual EnemyType Type => enemyType;
     public Health Health => health;
     public int SpawnId { get; private set; }
     public float MoveSpeed { get; private set; }
@@ -32,6 +32,8 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
 
     protected Rigidbody2D Body => body;
     protected PlayerController Target => target;
+    protected virtual int SpawnMaxHP => maxHP;
+    protected virtual float KnockbackScale => knockbackMultiplier;
     protected bool CanAct => spawned && !deathHandled && health != null && !health.IsDead
         && GameManager.Instance != null && GameManager.Instance.State == GameState.Playing;
 
@@ -71,7 +73,7 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
         rootUntil = 0f;
         knockbackUntil = 0f;
         StopMotion();
-        health.ResetHealth(maxHP);
+        health.ResetHealth(SpawnMaxHP);
 
         GameManager manager = GameManager.Instance;
         PlayerController player = manager != null ? manager.Player : target;
@@ -127,7 +129,7 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
 
     protected virtual void FixedUpdate()
     {
-        if (!CanAct || IsRooted)
+        if (!CanAct)
         {
             StopMotion();
             return;
@@ -136,6 +138,12 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
         // Let the physics impulse move the enemy before pursuit takes control again.
         if (Time.time < knockbackUntil)
             return;
+
+        if (IsRooted)
+        {
+            StopMotion();
+            return;
+        }
 
         TickMovement();
     }
@@ -161,12 +169,18 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
 
     private void HandleDamage(DamageInfo info)
     {
-        if (info.knockback.sqrMagnitude > 0f && !IsRooted)
-        {
-            body.AddForce(info.knockback * knockbackMultiplier, ForceMode2D.Impulse);
-            knockbackUntil = Time.time + knockbackRecoveryTime;
-        }
+        if (!IsRooted)
+            ApplyKnockback(info.knockback);
         GameEvents.RaiseEnemyHit(transform.position, info.fromRecall);
+    }
+
+    public void ApplyKnockback(Vector2 impulse)
+    {
+        if (body == null || impulse.sqrMagnitude <= 0f)
+            return;
+
+        body.AddForce(impulse * KnockbackScale, ForceMode2D.Impulse);
+        knockbackUntil = Time.time + knockbackRecoveryTime;
     }
 
     private void HandleDeath()
@@ -177,7 +191,7 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
         deathHandled = true;
         int dyingSpawnId = SpawnId;
         if (DropTable.Instance != null)
-            DropTable.Instance.Drop(transform.position, enemyType);
+            DropTable.Instance.Drop(transform.position, Type);
         if (SpawnId != dyingSpawnId || !spawned)
             return;
 
@@ -185,7 +199,7 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
         if (SpawnId != dyingSpawnId || !spawned)
             return;
 
-        GameEvents.RaiseEnemyKilled(transform.position, enemyType);
+        GameEvents.RaiseEnemyKilled(transform.position, Type);
         if (SpawnId == dyingSpawnId && spawned)
             Despawn();
     }

@@ -18,6 +18,8 @@ public class GameManager : MonoBehaviour
     [SerializeField] private float waveClearDelay = 3f;
 
     private bool waveIsClearing;
+    private int damageBatchDepth;
+    private bool playerDeathPending;
 
     private void Awake()
     {
@@ -176,6 +178,8 @@ public class GameManager : MonoBehaviour
     private void ResetRun()
     {
         StopAllCoroutines();
+        damageBatchDepth = 0;
+        playerDeathPending = false;
         waveIsClearing = false;
         SetState(GameState.MainMenu);
         GameEvents.RaiseRunReset();
@@ -203,6 +207,31 @@ public class GameManager : MonoBehaviour
         if (current > 0 || (State != GameState.Playing && State != GameState.Paused))
             return;
 
+        if (damageBatchDepth > 0)
+        {
+            playerDeathPending = true;
+            return;
+        }
+        EndRunFromDeath();
+    }
+
+    internal void BeginDamageBatch()
+    {
+        damageBatchDepth++;
+    }
+
+    internal void EndDamageBatch()
+    {
+        damageBatchDepth = Mathf.Max(0, damageBatchDepth - 1);
+        if (damageBatchDepth == 0 && playerDeathPending)
+        {
+            playerDeathPending = false;
+            EndRunFromDeath();
+        }
+    }
+
+    private void EndRunFromDeath()
+    {
         StopAllCoroutines();
         waveIsClearing = false;
         SetState(GameState.GameOver);

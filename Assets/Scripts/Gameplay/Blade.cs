@@ -17,6 +17,7 @@ public class Blade : MonoBehaviour, IPoolable
 
     private readonly List<RaycastHit2D> castHits = new List<RaycastHit2D>();
     private readonly Dictionary<Component, int> hitTargets = new Dictionary<Component, int>();
+    private readonly HashSet<Rigidbody2D> pushedBodies = new HashSet<Rigidbody2D>();
     private Rigidbody2D body;
     private CircleCollider2D hitCollider;
     private PlayerController owner;
@@ -26,9 +27,15 @@ public class Blade : MonoBehaviour, IPoolable
     private float distanceTravelled;
     private int damage;
     private float knockback;
+    private Rigidbody2D stuckBody;
+    private Collider2D stuckCollider;
+    private Vector3 stuckLocalPosition;
+    private float stuckLocalAngle;
 
     public bool CanRecall => isActiveAndEnabled && (state == FlightState.Outbound || state == FlightState.Resting);
     public bool IsReturning => state == FlightState.Returning;
+    public bool IsResting => state == FlightState.Resting;
+    public Rigidbody2D StuckBody => stuckBody;
 
     private void Awake()
     {
@@ -42,11 +49,14 @@ public class Blade : MonoBehaviour, IPoolable
 
     public void OnSpawn()
     {
+        ClearAnchor();
         state = FlightState.Inactive;
         owner = null;
         volley = null;
         hitTargets.Clear();
+        pushedBodies.Clear();
         distanceTravelled = 0f;
+        body.simulated = true;
         body.position = transform.position;
         body.linearVelocity = Vector2.zero;
         body.angularVelocity = 0f;
@@ -54,12 +64,16 @@ public class Blade : MonoBehaviour, IPoolable
 
     public void OnDespawn()
     {
+        ClearAnchor();
         if (owner != null) owner.OnBladeDespawned(this);
         owner = null;
         volley = null;
         state = FlightState.Inactive;
         hitTargets.Clear();
+        pushedBodies.Clear();
+        body.simulated = true;
         body.linearVelocity = Vector2.zero;
+        body.angularVelocity = 0f;
     }
 
     internal void Launch(PlayerController player, Vector2 aim, int hitDamage, float hitKnockback)
@@ -70,17 +84,21 @@ public class Blade : MonoBehaviour, IPoolable
         knockback = hitKnockback;
         distanceTravelled = 0f;
         hitTargets.Clear();
+        pushedBodies.Clear();
+        ClearAnchor();
+        body.simulated = true;
         body.position = transform.position;
         body.rotation = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
-        state = ClampMuzzleToWall() ? FlightState.Resting : FlightState.Outbound;
+        state = FlightState.Outbound;
+        ClampMuzzleToWall();
     }
 
-    private bool ClampMuzzleToWall()
+    private void ClampMuzzleToWall()
     {
         Vector2 playerPosition = owner.transform.position;
         Vector2 toMuzzle = body.position - playerPosition;
         float distance = toMuzzle.magnitude;
-        if (distance <= 0.0001f) return false;
+        if (distance <= 0.0001f) return;
 
         ContactFilter2D filter = new ContactFilter2D();
         filter.SetLayerMask(wallLayers);
@@ -88,24 +106,40 @@ public class Blade : MonoBehaviour, IPoolable
         float scale = Mathf.Max(Mathf.Abs(transform.lossyScale.x), Mathf.Abs(transform.lossyScale.y));
         Vector2 center = playerPosition + (Vector2)transform.TransformVector(hitCollider.offset);
         Physics2D.CircleCast(center, hitCollider.radius * scale, toMuzzle.normalized, filter, castHits, distance);
-        bool hitWall = false;
+        Collider2D blockingCollider = null;
         foreach (RaycastHit2D hit in castHits)
         {
             if (IsIgnored(hit.collider) || hit.distance > distance) continue;
             distance = hit.distance;
-            hitWall = true;
+            blockingCollider = hit.collider;
         }
         // Check the muzzle offset as well as flight, so a close wall cannot be skipped at launch.
-        if (hitWall) body.position = playerPosition + toMuzzle.normalized * distance;
-        return hitWall;
+        if (blockingCollider == null) return;
+        Vector2 stopPosition = playerPosition + toMuzzle.normalized * distance;
+        DealHit(blockingCollider, direction, false);
+        if (isActiveAndEnabled && state == FlightState.Outbound)
+            RestAt(stopPosition, blockingCollider);
     }
 
     internal void BeginRecall(BladeRecall.RecallVolley recallVolley)
     {
         if (!CanRecall || owner == null) return;
+        FollowAnchor();
+        ClearAnchor();
+        body.simulated = true;
+        body.position = transform.position;
+        body.rotation = transform.eulerAngles.z;
         volley = recallVolley;
         hitTargets.Clear();
+        pushedBodies.Clear();
         state = FlightState.Returning;
+    }
+
+    private void LateUpdate()
+    {
+        if (state == FlightState.Resting && GameManager.Instance != null
+            && GameManager.Instance.State == GameState.Playing)
+            FollowAnchor();
     }
 
     private void FixedUpdate()
@@ -137,22 +171,26 @@ public class Blade : MonoBehaviour, IPoolable
             travel = Mathf.Min(flightSpeed * Time.fixedDeltaTime, Mathf.Max(0f, flightRange - distanceTravelled));
         }
 
-        float permittedTravel = Sweep(origin, direction, travel, returning, out bool hitWall);
+        float permittedTravel = Sweep(origin, direction, travel, returning, out Collider2D blockingCollider);
         if (!isActiveAndEnabled || state == FlightState.Inactive) return;
-        body.MovePosition(origin + direction * permittedTravel);
+        Vector2 destination = origin + direction * permittedTravel;
         if (returning)
         {
-            if (Vector2.Distance(origin + direction * permittedTravel, owner.transform.position) <= catchDistance)
+            body.MovePosition(destination);
+            if (Vector2.Distance(destination, owner.transform.position) <= catchDistance)
                 CompleteReturn();
         }
         else
         {
             distanceTravelled += permittedTravel;
-            if (hitWall || distanceTravelled >= flightRange - 0.001f) state = FlightState.Resting;
+            if (blockingCollider != null || distanceTravelled >= flightRange - 0.001f)
+                RestAt(destination, blockingCollider);
+            else
+                body.MovePosition(destination);
         }
     }
 
-    private float Sweep(Vector2 origin, Vector2 heading, float distance, bool returning, out bool hitWall)
+    private float Sweep(Vector2 origin, Vector2 heading, float distance, bool returning, out Collider2D blockingCollider)
     {
         ContactFilter2D filter = new ContactFilter2D();
         filter.SetLayerMask(hitLayers | wallLayers);
@@ -162,7 +200,7 @@ public class Blade : MonoBehaviour, IPoolable
         Vector2 center = origin + (Vector2)transform.TransformVector(hitCollider.offset);
         Physics2D.CircleCast(center, radius, heading, filter, castHits, distance);
         float allowedDistance = distance;
-        hitWall = false;
+        blockingCollider = null;
         if (!returning)
         {
             foreach (RaycastHit2D hit in castHits)
@@ -172,7 +210,7 @@ public class Blade : MonoBehaviour, IPoolable
                 if (hit.distance <= allowedDistance)
                 {
                     allowedDistance = hit.distance;
-                    hitWall = true;
+                    blockingCollider = hit.collider;
                 }
             }
         }
@@ -180,10 +218,53 @@ public class Blade : MonoBehaviour, IPoolable
         foreach (RaycastHit2D hit in castHits)
         {
             if (hit.distance > allowedDistance + 0.001f || IsIgnored(hit.collider)) continue;
-            if ((hitLayers.value & (1 << hit.collider.gameObject.layer)) == 0) continue;
-            DealDamage(hit.collider, heading, returning);
+            int layerBit = 1 << hit.collider.gameObject.layer;
+            if (((hitLayers.value | wallLayers.value) & layerBit) == 0) continue;
+            DealHit(hit.collider, heading, returning);
         }
         return allowedDistance;
+    }
+
+    private void RestAt(Vector2 position, Collider2D surface)
+    {
+        body.position = position;
+        body.linearVelocity = Vector2.zero;
+        body.angularVelocity = 0f;
+        body.simulated = false;
+        transform.SetPositionAndRotation(new Vector3(position.x, position.y, transform.position.z),
+            Quaternion.Euler(0f, 0f, body.rotation));
+        state = FlightState.Resting;
+        ClearAnchor();
+
+        if (surface == null || !surface.enabled || !surface.gameObject.activeInHierarchy
+            || surface.attachedRigidbody == null)
+            return;
+
+        stuckBody = surface.attachedRigidbody;
+        stuckCollider = surface;
+        stuckLocalPosition = stuckBody.transform.InverseTransformPoint(transform.position);
+        stuckLocalAngle = Mathf.DeltaAngle(stuckBody.transform.eulerAngles.z, transform.eulerAngles.z);
+    }
+
+    private void FollowAnchor()
+    {
+        if (stuckBody == null || stuckCollider == null || !stuckCollider.enabled
+            || !stuckBody.gameObject.activeInHierarchy)
+        {
+            ClearAnchor();
+            return;
+        }
+
+        // A local anchor follows the prop without making a pooled blade its child.
+        Vector3 position = stuckBody.transform.TransformPoint(stuckLocalPosition);
+        Quaternion rotation = Quaternion.Euler(0f, 0f, stuckBody.transform.eulerAngles.z + stuckLocalAngle);
+        transform.SetPositionAndRotation(position, rotation);
+    }
+
+    private void ClearAnchor()
+    {
+        stuckBody = null;
+        stuckCollider = null;
     }
 
     private bool IsIgnored(Collider2D other)
@@ -192,13 +273,19 @@ public class Blade : MonoBehaviour, IPoolable
             || (owner != null && (other.transform == owner.transform || other.transform.IsChildOf(owner.transform)));
     }
 
-    private void DealDamage(Collider2D other, Vector2 heading, bool returning)
+    private void DealHit(Collider2D other, Vector2 heading, bool returning)
     {
         IDamageable target = other.GetComponent<IDamageable>();
         if (target == null && other.attachedRigidbody != null)
             target = other.attachedRigidbody.GetComponent<IDamageable>();
         Component receiver = target as Component;
-        if (receiver == null) return;
+        if (receiver == null)
+        {
+            Rigidbody2D hitBody = other.attachedRigidbody;
+            if (hitBody != null && hitBody.bodyType == RigidbodyType2D.Dynamic && pushedBodies.Add(hitBody))
+                hitBody.AddForce(heading * knockback, ForceMode2D.Impulse);
+            return;
+        }
         EnemyBase enemy = receiver.GetComponent<EnemyBase>();
         int spawnId = enemy != null ? enemy.SpawnId : 0;
         if (hitTargets.TryGetValue(receiver, out int previousSpawn) && previousSpawn == spawnId) return;
