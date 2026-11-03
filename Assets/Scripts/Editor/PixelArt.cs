@@ -142,8 +142,350 @@ public static class PixelArt
             ["ui_knob"] = Save("ui_knob", Knob()),
             ["ui_check"] = Save("ui_check", Check()),
             ["ui_vignette"] = Save("ui_vignette", Vignette(64, 36), smooth: true),
+
+            // Console-style UI kit.
+            ["ui_frame"] = Save("ui_frame", PanelFrame(), border: 5),
+            ["ui_header"] = Save("ui_header", HeaderBar(), border: 4),
+            ["ui_hazard"] = Save("ui_hazard", HazardTile(), tiled: true),
+            ["btn_primary"] = Save("btn_primary", ButtonSprite(Orange, OrangeLight, OrangeDark, false), border: 5),
+            ["btn_primary_hover"] = Save("btn_primary_hover", ButtonSprite(OrangeLight, new Color32(255, 230, 160, 255), Orange, false), border: 5),
+            ["btn_primary_pressed"] = Save("btn_primary_pressed", ButtonSprite(OrangeDark, Orange, OrangeDark, true), border: 5),
+            ["btn_secondary"] = Save("btn_secondary", ButtonSprite(Navy, NavyLight, NavyDark, false), border: 5),
+            ["btn_secondary_hover"] = Save("btn_secondary_hover", ButtonSprite(NavyLight, new Color32(130, 150, 210, 255), Navy, false), border: 5),
+            ["btn_secondary_pressed"] = Save("btn_secondary_pressed", ButtonSprite(NavyDark, Navy, NavyDark, true), border: 5),
+            ["btn_disabled"] = Save("btn_disabled", ButtonSprite(GreyDark, Grey, new Color32(40, 42, 54, 255), false), border: 5),
+            ["ui_bar_bg"] = Save("ui_bar_bg", BarBack(), border: 3),
+            ["ui_socket"] = Save("ui_socket", Socket(), border: 4),
+            ["ui_keycap"] = Save("ui_keycap", Keycap(), border: 4),
+            ["pip_done"] = Save("pip_done", Pip(Gold, GoldLight)),
+            ["pip_current"] = Save("pip_current", Pip(Orange, OrangeLight)),
+            ["pip_todo"] = Save("pip_todo", Pip(new Color32(34, 40, 66, 255), new Color32(48, 56, 90, 255))),
+            ["dot_on"] = Save("dot_on", Dot(Orange)),
+            ["dot_off"] = Save("dot_off", Dot(GreyDark)),
+            ["ui_glow"] = Save("ui_glow", Glow(32), smooth: true),
+            ["ui_gradient"] = Save("ui_gradient", Gradient(4, 64), smooth: true),
+            ["ico_heart"] = Save("ico_heart", HeartIcon()),
+            ["ico_moon"] = Save("ico_moon", MoonIcon(16)),
+            ["ico_moon_big"] = Save("ico_moon_big", MoonIcon(40)),
+            ["ico_sun"] = Save("ico_sun", SunIcon()),
+            ["ico_intruder"] = Save("ico_intruder", IntruderIcon()),
+            ["ico_recall"] = Save("ico_recall", RecallIcon()),
+            ["ico_throwrate"] = Save("ico_throwrate", ThrowRateIcon()),
+            ["ico_damage"] = Save("ico_damage", DamageIcon()),
+            ["ico_vest"] = Save("ico_vest", VestIcon()),
+            ["ico_boot"] = Save("ico_boot", BootIcon()),
+            ["ico_fan"] = Save("ico_fan", FanIcon()),
+            ["ico_mouse"] = Save("ico_mouse", MouseIcon()),
         };
         return sprites;
+    }
+
+    // ---------- UI kit ----------
+
+    static readonly Color32 PanelFill = new Color32(18, 21, 34, 242);
+    static readonly Color32 PanelShade = new Color32(26, 30, 52, 255);
+
+    static Canvas PanelFrame()
+    {
+        var c = new Canvas(16, 16);
+        c.Rect(0, 0, 16, 16, Ink);
+        c.Rect(1, 1, 14, 14, PanelShade);
+        c.Rect(1, 14, 14, 1, NavyLight);         // top bevel
+        c.Rect(1, 1, 1, 14, NavyLight);          // left bevel
+        c.Rect(2, 2, 12, 12, PanelFill);
+        foreach (var p in new[] { (3, 3), (12, 3), (3, 12), (12, 12) })
+            c.Set(p.Item1, p.Item2, GreyLight); // rivets
+        return c;
+    }
+
+    static Canvas HeaderBar()
+    {
+        var c = new Canvas(16, 12);
+        c.Rect(0, 0, 16, 12, Ink);
+        c.Rect(1, 1, 14, 10, Orange);
+        c.Rect(1, 10, 14, 1, OrangeLight);
+        c.Rect(1, 1, 14, 2, OrangeDark);
+        return c;
+    }
+
+    static Canvas HazardTile()
+    {
+        var c = new Canvas(8, 8);
+        for (int y = 0; y < 8; y++)
+            for (int x = 0; x < 8; x++)
+                c.Set(x, y, ((x + y) / 4) % 2 == 0 ? Hazard : Ink);
+        return c;
+    }
+
+    static Canvas ButtonSprite(Color32 fill, Color32 light, Color32 dark, bool pressed)
+    {
+        var c = new Canvas(16, 16);
+        c.Rect(0, 0, 16, 16, Ink);
+        if (pressed)
+        {
+            // Pressed: no depth lip, darker top edge, face sits lower.
+            c.Rect(1, 1, 14, 13, fill);
+            c.Rect(1, 13, 14, 1, dark);
+        }
+        else
+        {
+            c.Rect(1, 1, 14, 14, dark);              // depth lip
+            c.Rect(1, 3, 14, 12, fill);
+            c.Rect(1, 14, 14, 1, light);
+            c.Rect(1, 3, 1, 11, light);
+        }
+        return c;
+    }
+
+    static Canvas BarBack()
+    {
+        var c = new Canvas(8, 8);
+        c.Rect(0, 0, 8, 8, Ink);
+        c.Rect(1, 1, 6, 6, new Color32(12, 14, 24, 255));
+        c.Rect(1, 6, 6, 1, new Color32(6, 7, 12, 255));
+        return c;
+    }
+
+    static Canvas Socket()
+    {
+        var c = new Canvas(12, 12);
+        c.Rect(0, 0, 12, 12, Ink);
+        c.Rect(1, 1, 10, 10, new Color32(22, 26, 42, 255));
+        c.Rect(1, 10, 10, 1, new Color32(10, 12, 20, 255));
+        c.Rect(1, 1, 10, 1, new Color32(46, 54, 86, 255));
+        return c;
+    }
+
+    static Canvas Keycap()
+    {
+        var c = new Canvas(12, 12);
+        c.Rect(0, 0, 12, 12, Ink);
+        c.Rect(1, 1, 10, 10, Grey);
+        c.Rect(1, 3, 10, 8, new Color32(214, 220, 232, 255));
+        c.Rect(2, 10, 8, 1, White);
+        return c;
+    }
+
+    static Canvas Pip(Color32 fill, Color32 light)
+    {
+        var c = new Canvas(8, 8);
+        c.Rect(0, 0, 8, 8, Ink);
+        c.Rect(1, 1, 6, 6, fill);
+        c.Rect(1, 6, 6, 1, light);
+        return c;
+    }
+
+    static Canvas Dot(Color32 color)
+    {
+        var c = new Canvas(6, 6);
+        c.Ellipse(3f, 3f, 3f, 3f, Ink);
+        c.Ellipse(3f, 3f, 2f, 2f, color);
+        return c;
+    }
+
+    static Canvas Glow(int size)
+    {
+        var c = new Canvas(size, size);
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float dx = (x + 0.5f) / size * 2f - 1f, dy = (y + 0.5f) / size * 2f - 1f;
+                float a = Mathf.Clamp01(1f - Mathf.Sqrt(dx * dx + dy * dy));
+                c.Set(x, y, new Color32(255, 255, 255, (byte)(a * a * 255)));
+            }
+        return c;
+    }
+
+    static Canvas Gradient(int w, int h)
+    {
+        var c = new Canvas(w, h);
+        Color32 top = new Color32(16, 20, 40, 235), bottom = new Color32(4, 5, 10, 250);
+        for (int y = 0; y < h; y++)
+        {
+            Color32 row = Color32.Lerp(bottom, top, y / (float)(h - 1));
+            for (int x = 0; x < w; x++) c.Set(x, y, row);
+        }
+        return c;
+    }
+
+    // ---------- Icons ----------
+
+    static Canvas HeartIcon()
+    {
+        var c = new Canvas(12, 10);
+        c.Map(new[]
+        {
+            "..RR....RR..",
+            ".RLLR..RRRR.",
+            "RLLRRRRRRRRR",
+            "RLRRRRRRRRRR",
+            "RRRRRRRRRRRR",
+            ".RRRRRRRRRR.",
+            "..RRRRRRRR..",
+            "...RRRRRR...",
+            "....RRRR....",
+            ".....RR.....",
+        }, new Dictionary<char, Color32> { ['R'] = Red, ['L'] = new Color32(255, 160, 160, 255) });
+        return c;
+    }
+
+    static Canvas MoonIcon(int size)
+    {
+        var c = new Canvas(size, size);
+        float r = size / 2f - 1f;
+        Color32 moon = new Color32(240, 232, 200, 255), shade = new Color32(196, 186, 152, 255);
+        c.Ellipse(size / 2f, size / 2f, r, r, moon);
+        c.Ellipse(size / 2f + r * 0.45f, size / 2f + r * 0.3f, r * 0.85f, r * 0.85f, Clear);
+        c.Ellipse(size * 0.32f, size * 0.38f, r * 0.14f, r * 0.14f, shade);
+        c.Ellipse(size * 0.42f, size * 0.22f, r * 0.1f, r * 0.1f, shade);
+        c.Outline(Ink);
+        return c;
+    }
+
+    static Canvas SunIcon()
+    {
+        var c = new Canvas(16, 16);
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * Mathf.PI / 4f;
+            for (float d = 5.5f; d < 7.5f; d += 0.5f)
+                c.Set(Mathf.RoundToInt(7.5f + Mathf.Cos(a) * d), Mathf.RoundToInt(7.5f + Mathf.Sin(a) * d), Orange);
+        }
+        c.Ellipse(8f, 8f, 4.5f, 4.5f, Gold);
+        c.Ellipse(7f, 9f, 2f, 2f, GoldLight);
+        return c;
+    }
+
+    static Canvas IntruderIcon()
+    {
+        var c = new Canvas(12, 12);
+        c.Ellipse(6f, 6f, 5f, 5f, GreyDark);
+        c.Ellipse(6.5f, 5.5f, 3.4f, 3f, Ink);
+        c.Set(5, 6, Red);
+        c.Set(8, 6, Red);
+        c.Outline(Ink);
+        return c;
+    }
+
+    static Canvas RecallIcon()
+    {
+        var c = new Canvas(12, 12);
+        for (int y = 0; y < 12; y++)
+            for (int x = 0; x < 12; x++)
+            {
+                float dx = x + 0.5f - 6f, dy = y + 0.5f - 6f, d = Mathf.Sqrt(dx * dx + dy * dy);
+                float angle = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
+                if (d > 3.2f && d < 5.4f && !(angle > 15f && angle < 75f)) c.Set(x, y, Orange);
+            }
+        c.Map(new[] { "OOO", ".O." }, new Dictionary<char, Color32> { ['O'] = OrangeLight }, 9, 6); // arrowhead
+        return c;
+    }
+
+    static readonly string[] BladeMap =
+    {
+        "...LL...",
+        "...OO...",
+        "...OO...",
+        "LOOWWOOL",
+        "LOOWWOOL",
+        "...OO...",
+        "...OO...",
+        "...LL...",
+    };
+
+    static Dictionary<char, Color32> BladePalette => new Dictionary<char, Color32>
+    {
+        ['L'] = OrangeLight, ['O'] = Orange, ['W'] = new Color32(255, 240, 210, 255),
+    };
+
+    static Canvas ThrowRateIcon()
+    {
+        var c = new Canvas(12, 12);
+        c.Map(BladeMap, BladePalette, 4, 2);
+        c.Rect(0, 6, 3, 1, GreyLight);
+        c.Rect(1, 8, 2, 1, GreyLight);
+        c.Rect(0, 4, 2, 1, GreyLight);
+        return c;
+    }
+
+    static Canvas DamageIcon()
+    {
+        var c = new Canvas(12, 12);
+        c.Map(BladeMap, BladePalette, 2, 2);
+        foreach (var p in new[] { (0, 11), (1, 10), (11, 11), (10, 10), (11, 0), (10, 1), (0, 0) })
+            c.Set(p.Item1, p.Item2, White);
+        return c;
+    }
+
+    static Canvas VestIcon()
+    {
+        var c = new Canvas(12, 12);
+        c.Map(new[]
+        {
+            "..NN....NN..",
+            ".NNNN..NNNN.",
+            ".NNNNNNNNNN.",
+            ".NNNNNNNNNN.",
+            "NNNNGGNNNNNN",
+            "NNNNGGNNNNNN",
+            "NNNNNNNNNNNN",
+            "NNNNNNNNNNNN",
+            "NNNNNNNNNNNN",
+            ".NNNNNNNNNN.",
+            ".NNNNNNNNNN.",
+            ".LLLLLLLLLL.",
+        }, new Dictionary<char, Color32> { ['N'] = NavyLight, ['G'] = Gold, ['L'] = SteelLight });
+        return c;
+    }
+
+    static Canvas BootIcon()
+    {
+        var c = new Canvas(12, 12);
+        c.Map(new[]
+        {
+            "............",
+            "...BBBB.....",
+            "...BBBB.....",
+            "...BBBB.....",
+            "...BBBBB....",
+            "...BSSBBB...",
+            "..BBBBBBBBB.",
+            ".BBBBBBBBBBB",
+            ".WWWWWWWWWWW",
+            "............",
+            "............",
+            "............",
+        }, new Dictionary<char, Color32> { ['B'] = NavyLight, ['S'] = Orange, ['W'] = White });
+        return c;
+    }
+
+    static Canvas FanIcon()
+    {
+        var c = new Canvas(12, 12);
+        foreach (var p in new[] { (6, 9), (2, 6), (10, 6) })
+        {
+            c.Rect(p.Item1 - 1, p.Item2, 3, 1, Orange);
+            c.Rect(p.Item1, p.Item2 - 1, 1, 3, Orange);
+            c.Set(p.Item1, p.Item2, OrangeLight);
+        }
+        c.Set(6, 2, GreyLight); c.Set(6, 4, GreyLight);
+        c.Set(4, 3, GreyLight); c.Set(3, 4, GreyLight);
+        c.Set(8, 3, GreyLight); c.Set(9, 4, GreyLight);
+        c.Rect(5, 0, 3, 2, Navy);
+        return c;
+    }
+
+    static Canvas MouseIcon()
+    {
+        var c = new Canvas(10, 14);
+        c.Ellipse(5f, 6f, 5f, 6f, GreyLight);
+        c.Rect(0, 6, 10, 2, GreyLight);
+        c.Ellipse(5f, 8.5f, 5f, 5.5f, GreyLight);
+        c.Rect(1, 8, 4, 5, Orange);              // left button
+        c.Rect(5, 8, 1, 6, Grey);                // divider
+        c.Rect(1, 7, 8, 1, Grey);
+        c.Outline(Ink);
+        return c;
     }
 
     static Canvas Kestrel()

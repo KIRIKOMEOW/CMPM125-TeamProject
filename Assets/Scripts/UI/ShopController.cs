@@ -1,14 +1,16 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-// Between-wave shop panel: rebuilds every row whenever coins, upgrades or health change.
+// Between-wave shop panel: rebuilds every row whenever coins, upgrades, health or language change.
 public class ShopController : MonoBehaviour
 {
     [SerializeField] private ShopItemView[] items = new ShopItemView[0];
     [SerializeField] private Text titleText;
     [SerializeField] private Text coinsText;
     [SerializeField] private Text healthText;
+    [SerializeField] private Image healthFill;
     [SerializeField] private Button continueButton;
+    [SerializeField] private Text continueLabel;
 
     private void Awake()
     {
@@ -27,6 +29,7 @@ public class ShopController : MonoBehaviour
         GameEvents.CoinsChanged += OnCoinsChanged;
         GameEvents.UpgradePurchased += OnUpgradePurchased;
         GameEvents.PlayerHealthChanged += OnHealthChanged;
+        Loc.Changed += RefreshAll;
         RefreshAll();
     }
 
@@ -35,6 +38,7 @@ public class ShopController : MonoBehaviour
         GameEvents.CoinsChanged -= OnCoinsChanged;
         GameEvents.UpgradePurchased -= OnUpgradePurchased;
         GameEvents.PlayerHealthChanged -= OnHealthChanged;
+        Loc.Changed -= RefreshAll;
     }
 
     private void OnCoinsChanged(int total) => RefreshAll();
@@ -47,19 +51,26 @@ public class ShopController : MonoBehaviour
         if (manager != null)
         {
             if (titleText != null)
-                titleText.text = $"WAVE {manager.CurrentWave} CLEARED - SUPPLY ROOM";
+            {
+                titleText.font = Loc.Font;
+                titleText.text = Loc.Format("shop.title", manager.CurrentWave);
+            }
             if (coinsText != null)
                 coinsText.text = manager.Coins.ToString();
-            if (continueButton != null)
+            if (continueLabel != null)
             {
-                Text label = continueButton.GetComponentInChildren<Text>();
-                if (label != null)
-                    label.text = $"START WAVE {manager.CurrentWave + 1}";
+                continueLabel.font = Loc.Font;
+                continueLabel.text = Loc.Format("shop.next", manager.CurrentWave + 1);
             }
 
             PlayerController player = manager.Player;
-            if (healthText != null && player != null && player.Health != null)
-                healthText.text = $"HP {player.Health.CurrentHP}/{player.Health.MaxHP}";
+            if (player != null && player.Health != null)
+            {
+                if (healthText != null)
+                    healthText.text = Loc.Format("shop.hp", player.Health.CurrentHP, player.Health.MaxHP);
+                if (healthFill != null)
+                    healthFill.fillAmount = (float)player.Health.CurrentHP / Mathf.Max(1, player.Health.MaxHP);
+            }
         }
 
         foreach (ShopItemView item in items)

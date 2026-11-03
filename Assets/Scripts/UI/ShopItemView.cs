@@ -5,7 +5,9 @@ using UnityEngine.UI;
 public class ShopItemView : MonoBehaviour
 {
     [SerializeField] private UpgradeType upgrade;
-    [SerializeField] private Text nameText;
+    [SerializeField] private Image[] levelPips = new Image[0];
+    [SerializeField] private Sprite pipOn;
+    [SerializeField] private Sprite pipOff;
     [SerializeField] private Text levelText;
     [SerializeField] private Text priceText;
     [SerializeField] private Button buyButton;
@@ -39,16 +41,21 @@ public class ShopItemView : MonoBehaviour
         int max = upgrades.GetMaxLevel(upgrade);
         int price = upgrades.GetPrice(upgrade);
 
-        if (levelText != null)
+        for (int i = 0; i < levelPips.Length; i++)
         {
-            if (max < 0)
-                levelText.text = level > 0 ? $"bought x{level}" : "";
-            else
-                levelText.text = new string('#', level) + new string('-', Mathf.Max(0, max - level));
+            if (levelPips[i] == null) continue;
+            levelPips[i].enabled = i < max;
+            levelPips[i].sprite = i < level ? pipOn : pipOff;
         }
 
+        if (levelText != null)
+            levelText.text = max < 0 && level > 0 ? $"x{level}" : "";
+
         if (priceText != null)
-            priceText.text = price < 0 ? "MAX" : price.ToString();
+        {
+            priceText.font = Loc.Font;
+            priceText.text = price < 0 ? Loc.Get("shop.max") : price.ToString();
+        }
 
         if (buyButton != null)
             buyButton.interactable = upgrades.CanBuy(upgrade);
