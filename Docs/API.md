@@ -51,8 +51,8 @@ public enum UpgradeType { ThrowRate, Damage, MaxHP, MoveSpeed, FanThrow, Heal }
 | `StartGame()` | 仅 MainMenu 可用；重置本局、进入 Playing、发出第 1 波事件 |
 | `PauseGame()` / `ResumeGame()` | 仅 Playing ↔ Paused；Esc 自动调用 |
 | `CloseShopAndStartNextWave()` | 仅 Shop 可用；递增波次并发事件 |
-| `RestartGame()` | 原场景重置并回 MainMenu，遵循策划案 retry → Main Menu；开始按钮再调用 StartGame |
-| `ReturnToMainMenu()` | 取消波次过渡、冻结现有世界作为菜单背景；再次 StartGame 才清空 |
+| `RestartGame()` | 原场景完整重置后直接开始第 1 波，供结算界面的“再来一局”调用 |
+| `ReturnToMainMenu()` | 原场景完整重置后进入 MainMenu，供暂停/结算界面的“回主菜单”调用 |
 | `QuitGame()` | `Application.Quit()`；编辑器内不会退出 Play Mode |
 | `bool TrySpendCoins(int amount)` | 拒绝负数和余额不足；成功扣钱并发 CoinsChanged |
 | `AddCoins(int amount)` | 忽略非正数；限制整数溢出并发 CoinsChanged |
@@ -114,6 +114,8 @@ Health 公开只读属性：`CurrentHP`、`MaxHP`、`IsDead`、`IsInvulnerable`�
 - `Animator` 可选。可提供 `Speed` float、`Throw` trigger、`Hurt` trigger；脚本只设置存在且类型正确的参数。
 
 输入：Horizontal/Vertical（旧 Input Manager 默认 WASD/方向键）、鼠标瞄准、按住左键连续投掷、E/空格回收。右键扇形投掷留到 M5。基础移动速度 6、加速时间约 0.1 秒、松手停下；受击时给物理击退 0.12 秒恢复窗口。5 把刃，每把 25 伤害、击退 4；策划案未给基础投掷间隔，暂定 0.3 秒。
+
+每次状态切回 Playing 都先等待左键释放，再接受下一次按住投掷，防止菜单点击误投刃。显式调用 `TryThrow()` 不经过鼠标输入门控，供游戏逻辑/测试使用。
 
 公开只读属性：`Health Health`、`int BladesInHand`、`int MaxBlades`、`Vector2 AimDirection`。公开方法：`bool TryThrow()`（状态/数量/间隔/引用允许时投掷）、`TakeDamage(DamageInfo info)`、`ResetForNewRun()`（归还自身刃、恢复 Awake 记录的位置/初始 HP 与刃数、清冷却和速度）、`PublishStatus()`（血量/刃数/回收 HUD 快照）。输入和伤害仅 Playing 时生效；GameManager 统一调用重置。
 

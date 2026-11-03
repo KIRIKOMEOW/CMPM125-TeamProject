@@ -38,6 +38,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     private bool hasSpeedParameter;
     private bool hasThrowParameter;
     private bool hasHurtParameter;
+    private bool waitForMouseRelease = true;
 
     public Health Health { get; private set; }
     public int BladesInHand { get; private set; }
@@ -66,11 +67,14 @@ public class PlayerController : MonoBehaviour, IDamageable
     private void OnEnable()
     {
         Health.Damaged += OnDamaged;
+        GameEvents.GameStateChanged += OnGameStateChanged;
+        waitForMouseRelease = true;
     }
 
     private void OnDisable()
     {
         Health.Damaged -= OnDamaged;
+        GameEvents.GameStateChanged -= OnGameStateChanged;
         moveInput = Vector2.zero;
     }
 
@@ -85,9 +89,26 @@ public class PlayerController : MonoBehaviour, IDamageable
         moveInput = Vector2.ClampMagnitude(new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")), 1f);
         UpdateAim();
         throwRemaining = Mathf.Max(0f, throwRemaining - Time.deltaTime);
-        if (Input.GetMouseButton(0)) TryThrow();
+        HandleThrowInput(Input.GetMouseButton(0));
         if (Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.Space)) recall.TryRecall();
         if (hasSpeedParameter) animator.SetFloat("Speed", moveInput.magnitude);
+    }
+
+    private void OnGameStateChanged(GameState state)
+    {
+        if (state == GameState.Playing)
+            waitForMouseRelease = true;
+    }
+
+    private void HandleThrowInput(bool leftMouseHeld)
+    {
+        // A menu click must finish before it can become a gameplay attack.
+        if (waitForMouseRelease)
+        {
+            if (!leftMouseHeld) waitForMouseRelease = false;
+            return;
+        }
+        if (leftMouseHeld) TryThrow();
     }
 
     private void FixedUpdate()
@@ -204,6 +225,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         moveInput = Vector2.zero;
         throwRemaining = 0f;
         knockbackRemaining = 0f;
+        waitForMouseRelease = true;
         AimDirection = Vector2.right;
         body.position = spawnPosition;
         body.linearVelocity = Vector2.zero;

@@ -106,15 +106,13 @@ public class GameManager : MonoBehaviour
 
     public void RestartGame()
     {
-        // The design's retry flow returns to the main menu in the same scene.
         ResetRun();
+        BeginWave(1);
     }
 
     public void ReturnToMainMenu()
     {
-        StopAllCoroutines();
-        waveIsClearing = false;
-        SetState(GameState.MainMenu);
+        ResetRun();
     }
 
     public void QuitGame()

@@ -101,7 +101,7 @@ public static class M1Verification
         (checks as IDisposable)?.Dispose();
         checks = null;
         if (exception == null)
-            Debug.Log("M1_VERIFY PASS: pool, health, state/reset, wave delay/shop/victory, enemy death, blade piercing/recall/root/cooldown/walls.");
+            Debug.Log("M1_VERIFY PASS: pool, health, restart/menu reset, resume click guard, wave delay/shop/victory, enemy death, blade piercing/recall/root/cooldown/walls.");
         else
             Debug.LogError("M1_VERIFY FAIL: " + exception);
         EditorApplication.Exit(exception == null ? 0 : 1);
@@ -141,6 +141,15 @@ public static class M1Verification
         Assert(!player.TryThrow(), "Pause must reject throwing.");
         manager.ResumeGame();
         Assert(manager.State == GameState.Playing && Time.timeScale == 1f, "Resume state.");
+        InvokeMethod(player, "HandleThrowInput", true);
+        InvokeMethod(player, "HandleThrowInput", true);
+        Assert(player.BladesInHand == 5, "A held resume-button click cannot throw, even on a later frame.");
+        InvokeMethod(player, "HandleThrowInput", false);
+        Assert(player.BladesInHand == 5, "Releasing the menu click does not throw.");
+        InvokeMethod(player, "HandleThrowInput", true);
+        Assert(player.BladesInHand == 4, "The next press can throw after release.");
+        manager.RestartGame();
+        Assert(player.BladesInHand == 5, "Restart restores the blade consumed by the input regression.");
 
         GameObject template = new GameObject("Verification Pool Template");
         template.SetActive(false);
@@ -251,10 +260,23 @@ public static class M1Verification
         player.TakeDamage(new DamageInfo { amount = 1000 });
         Assert(manager.State == GameState.GameOver && Time.timeScale == 0f, "Player death enters Game Over.");
         manager.RestartGame();
-        Assert(manager.State == GameState.MainMenu && manager.CurrentWave == 0 && manager.Coins == 0, "Restart resets run state.");
+        Assert(manager.State == GameState.Playing && manager.CurrentWave == 1 && manager.Coins == 0 && Time.timeScale == 1f,
+            "Restart resets the run and immediately starts wave 1.");
         Assert(player.Health.CurrentHP == 100 && player.BladesInHand == 5 && recall.CooldownRemaining == 0f, "Restart resets player/ammo/cooldown.");
         Assert(!enemy.gameObject.activeSelf && UnityEngine.Object.FindObjectsByType<Blade>().Length == 0, "Restart retires enemies and blades.");
         Assert(SceneManager.GetActiveScene().handle == sceneHandle, "Restart keeps the same scene.");
+        enemy = pool.Get(enemyTemplate, new Vector2(20f, 0f), Quaternion.identity).GetComponent<RusherAI>();
+        manager.AddCoins(10);
+        Assert(player.TryThrow() && recall.TryRecall(), "Menu reset test has active blades and cooldown.");
+        player.TakeDamage(new DamageInfo { amount = 10 });
+        manager.PauseGame();
+        manager.ReturnToMainMenu();
+        Assert(manager.State == GameState.MainMenu && manager.CurrentWave == 0 && manager.Coins == 0 && Time.timeScale == 0f,
+            "Return to Main Menu resets the run and freezes it.");
+        Assert(player.Health.CurrentHP == 100 && player.BladesInHand == 5 && recall.CooldownRemaining == 0f
+            && !enemy.gameObject.activeSelf && UnityEngine.Object.FindObjectsByType<Blade>().Length == 0,
+            "Return to Main Menu clears health damage, enemies, blades and cooldown.");
+        Assert(SceneManager.GetActiveScene().handle == sceneHandle, "Return to Main Menu keeps the same scene.");
         IEnumerator stateChecks = VerifyWaveStates(manager);
         try
         {
@@ -312,8 +334,10 @@ public static class M1Verification
                 manager.CloseShopAndStartNextWave();
             }
             Assert(manager.State == GameState.Victory && manager.CurrentWave == 10, "Victory cannot start wave 11.");
+            manager.AddCoins(11);
             manager.ReturnToMainMenu();
-            Assert(manager.State == GameState.MainMenu && Time.timeScale == 0f, "Return to menu freezes the world.");
+            Assert(manager.State == GameState.MainMenu && manager.CurrentWave == 0 && manager.Coins == 0 && Time.timeScale == 0f,
+                "Return to menu after Victory clears the completed run.");
         }
         finally
         {
@@ -335,6 +359,14 @@ public static class M1Verification
             type = type.BaseType;
         }
         throw new MissingFieldException(target.GetType().Name, name);
+    }
+
+    private static void InvokeMethod(object target, string name, params object[] arguments)
+    {
+        MethodInfo method = target.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic);
+        if (method == null)
+            throw new MissingMethodException(target.GetType().Name, name);
+        method.Invoke(target, arguments);
     }
 
     private static void Assert(bool condition, string message)
