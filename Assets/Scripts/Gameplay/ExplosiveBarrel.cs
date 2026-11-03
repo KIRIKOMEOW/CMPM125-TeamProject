@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -10,6 +11,7 @@ public class ExplosiveBarrel : MonoBehaviour, IDamageable
     [SerializeField] private float explosionRadius = 3f;
     [SerializeField] private int explosionDamage = 60;
     [SerializeField] private float explosionForce = 12f;
+    [SerializeField] private float chainReactionDelay = 0.08f;
     [SerializeField] private LayerMask affectedLayers = ~0;
 
     private Rigidbody2D body;
@@ -20,6 +22,7 @@ public class ExplosiveBarrel : MonoBehaviour, IDamageable
     private Vector2 initialPosition;
     private float initialRotation;
     private bool initialSimulation;
+    private Coroutine chainReactionRoutine;
 
     public bool IsExploded { get; private set; }
     public int HitsRemaining { get; private set; }
@@ -49,29 +52,61 @@ public class ExplosiveBarrel : MonoBehaviour, IDamageable
     {
         GameEvents.WaveStarted += OnWaveStarted;
         GameEvents.RunReset += ResetBarrel;
+        GameEvents.GameStateChanged += OnGameStateChanged;
     }
 
     private void OnDisable()
     {
         GameEvents.WaveStarted -= OnWaveStarted;
         GameEvents.RunReset -= ResetBarrel;
+        GameEvents.GameStateChanged -= OnGameStateChanged;
+        CancelChainReaction();
     }
 
     public void TakeDamage(DamageInfo info)
     {
-        if (!isActiveAndEnabled || IsExploded || info.amount <= 0 || GameManager.Instance == null
+        if (!isActiveAndEnabled || IsExploded || chainReactionRoutine != null || info.amount <= 0 || GameManager.Instance == null
             || GameManager.Instance.State != GameState.Playing)
             return;
+
+        ExplosiveBarrel sourceBarrel = info.source != null ? info.source.GetComponent<ExplosiveBarrel>() : null;
+        if (sourceBarrel != null && sourceBarrel != this)
+        {
+            chainReactionRoutine = StartCoroutine(ChainReaction());
+            return;
+        }
 
         HitsRemaining = Mathf.Max(0, HitsRemaining - 1);
         if (HitsRemaining == 0)
             Explode();
     }
 
+    private IEnumerator ChainReaction()
+    {
+        yield return new WaitForSeconds(chainReactionDelay);
+        chainReactionRoutine = null;
+        if (isActiveAndEnabled && !IsExploded && GameManager.Instance != null
+            && GameManager.Instance.State == GameState.Playing)
+            Explode();
+    }
+
+    private void CancelChainReaction()
+    {
+        if (chainReactionRoutine != null)
+            StopCoroutine(chainReactionRoutine);
+        chainReactionRoutine = null;
+    }
+
+    private void OnGameStateChanged(GameState state)
+    {
+        if (state != GameState.Playing)
+            CancelChainReaction();
+    }
+
     private void Explode()
     {
         GameManager manager = GameManager.Instance;
-        // A lethal player hit cannot cancel the remaining targets of this blast or a chain reaction.
+        // A lethal player hit cannot cancel the remaining targets within this blast.
         manager.BeginDamageBatch();
         try
         {
@@ -86,6 +121,7 @@ public class ExplosiveBarrel : MonoBehaviour, IDamageable
     private void ApplyExplosion()
     {
         IsExploded = true;
+        HitsRemaining = 0;
         Vector2 center = transform.position;
         SetVisible(false);
         body.simulated = false;
@@ -139,6 +175,7 @@ public class ExplosiveBarrel : MonoBehaviour, IDamageable
 
     public void ResetBarrel()
     {
+        CancelChainReaction();
         IsExploded = false;
         HitsRemaining = hitsToExplode;
         body.position = initialPosition;
@@ -172,5 +209,6 @@ public class ExplosiveBarrel : MonoBehaviour, IDamageable
         explosionRadius = Mathf.Max(0f, explosionRadius);
         explosionDamage = Mathf.Max(1, explosionDamage);
         explosionForce = Mathf.Max(0f, explosionForce);
+        chainReactionDelay = Mathf.Max(0.01f, chainReactionDelay);
     }
 }

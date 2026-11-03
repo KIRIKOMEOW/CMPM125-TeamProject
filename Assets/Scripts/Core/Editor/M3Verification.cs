@@ -182,6 +182,49 @@ public static class M3Verification
         Assert(guard.CurrentStateName == "Patrol" && !guard.HasLineOfSight && guard.Health.CurrentHP == 75,
             "A pooled Guard resets perception, state and health.");
         UnityEngine.Object.DestroyImmediate(cover);
+
+        SetField(guard, "baseMoveSpeed", 3.5f);
+        guard.Initialize(1, player);
+        Rigidbody2D guardBody = guard.GetComponent<Rigidbody2D>();
+        for (int cycle = 0; cycle < 2; cycle++)
+        {
+            yield return GameTime(4.5f);
+            Assert(guard.CurrentStateName == "Patrol", "An unseen player does not trigger investigation before five seconds.");
+            if (cycle == 0)
+            {
+                float elapsed = GetField<float>(guard, "patrolElapsed");
+                Vector2 position = guardBody.position;
+                manager.PauseGame();
+                yield return Realtime(0.6d);
+                Assert(guard.CurrentStateName == "Patrol" && guardBody.position == position
+                    && Approximately(GetField<float>(guard, "patrolElapsed"), elapsed), "Pause freezes blind-investigation movement and its timer.");
+                manager.ResumeGame();
+            }
+            Vector2 latestTarget = new Vector2(100f, cycle == 0 ? -30f : 30f);
+            player.GetComponent<Rigidbody2D>().position = latestTarget;
+            Physics2D.SyncTransforms();
+            yield return Until(() => guard.CurrentStateName == "Search", 0.8f, "Five unseen patrol seconds trigger Search.");
+            Assert(!guard.HasLineOfSight && Vector2.Distance(GetField<Vector2>(guard, "lastSeenPosition"), latestTarget) < 0.01f,
+                "Blind investigation samples the player's latest position, including on later cycles.");
+            float distanceBeforeSearch = Vector2.Distance(guardBody.position, latestTarget);
+            float searchStarted = Time.time;
+            yield return Until(() => guard.CurrentStateName == "Patrol", 3.3f, "An unseen three-second search returns to Patrol.");
+            List<Vector2> points = GetField<List<Vector2>>(guard, "patrolPositions");
+            Assert(Time.time - searchStarted >= 2.9f && points.Count == 2
+                && Vector2.Distance((points[0] + points[1]) * 0.5f, guardBody.position) < 0.15f
+                && Vector2.Distance(points[0] - points[1], Vector2.right * 4f) < 0.01f,
+                "Search lasts three seconds and rebuilds the two patrol points around its new position.");
+            Assert(Vector2.Distance(guardBody.position, latestTarget) < distanceBeforeSearch - 7f,
+                "Successive investigation cycles make progress toward a distant player.");
+        }
+        yield return GameTime(0.3f);
+        SetField(guard, "baseMoveSpeed", 0f);
+        pool.Return(guard.gameObject);
+        guard = pool.Get(template, new Vector2(-20f, 0f), Quaternion.identity).GetComponent<GuardBotAI>();
+        Assert(guard.CurrentStateName == "Patrol" && !guard.HasLineOfSight
+            && GetField<float>(guard, "patrolElapsed") == 0f && GetField<float>(guard, "searchUntil") == 0f
+            && GetField<Vector2>(guard, "lastSeenPosition") == new Vector2(-20f, 0f),
+            "Pool reuse clears investigation timing and destinations from the previous life.");
     }
 
     private static IEnumerator VerifyProjectiles(PoolManager pool, GameManager manager, PlayerController player,
@@ -335,13 +378,27 @@ public static class M3Verification
                 "A new wave restores the barrel and its hit counter.");
 
             ExplosiveBarrel chain = Barrel("M3 Chain Barrel", new Vector2(10f, -1.5f));
-            chain.TakeDamage(new DamageInfo { amount = 1 });
             Physics2D.SyncTransforms();
             int before = explosions;
+            Assert(Approximately(GetField<float>(chain, "chainReactionDelay"), 0.08f), "Chain reactions default to a 0.08-second delay.");
+            Time.timeScale = 0.25f;
             barrel.TakeDamage(new DamageInfo { amount = 1 });
             barrel.TakeDamage(new DamageInfo { amount = 1 });
+            Coroutine pending = GetField<Coroutine>(chain, "chainReactionRoutine");
+            Assert(barrel.IsExploded && !chain.IsExploded && chain.HitsRemaining == 2 && pending != null,
+                "A blast schedules a fresh neighboring barrel without an initial direct hit or same-frame explosion.");
+            chain.TakeDamage(new DamageInfo { amount = 60, source = barrel.gameObject });
+            chain.TakeDamage(new DamageInfo { amount = 1 });
+            Assert(GetField<Coroutine>(chain, "chainReactionRoutine") == pending && chain.HitsRemaining == 2,
+                "Repeated blast and direct hits do not duplicate or bypass a pending chain delay.");
+            yield return Realtime(0.13d);
+            Assert(!chain.IsExploded && explosions == before + 1, "The 0.08-second chain delay uses scaled gameplay time.");
+            Time.timeScale = 1f;
+            yield return Until(() => chain.IsExploded, 0.3f, "One explosion ignites an untouched neighboring barrel after the short delay.");
+            yield return GameTime(0.12f);
             Assert(barrel.IsExploded && chain.IsExploded && explosions == before + 2,
-                "A blast supplies one hit to an armed neighboring barrel without recursive repeat explosions.");
+                "A delayed chain explodes each barrel exactly once without recursive repeats.");
+            yield return VerifyChainCancellation(manager, barrel, chain);
             manager.ReturnToMainMenu();
             Assert(!barrel.IsExploded && !chain.IsExploded && barrel.HitsRemaining == 2 && chain.HitsRemaining == 2,
                 "Returning to the menu restores all scene barrels.");
@@ -350,6 +407,7 @@ public static class M3Verification
         }
         finally
         {
+            Time.timeScale = manager.State == GameState.Playing ? 1f : 0f;
             GameEvents.BarrelExploded -= exploded;
         }
         UnityEngine.Object.DestroyImmediate(barrel.gameObject);
@@ -376,6 +434,35 @@ public static class M3Verification
             "A lethal player hit does not interrupt damage to the other targets in the same explosion.");
         manager.ReturnToMainMenu();
         UnityEngine.Object.DestroyImmediate(closeBarrel.gameObject);
+    }
+
+    private static IEnumerator VerifyChainCancellation(GameManager manager, ExplosiveBarrel source, ExplosiveBarrel target)
+    {
+        foreach (string transition in new[] { "Pause", "Shop", "RunReset", "Disable" })
+        {
+            source.ResetBarrel();
+            target.ResetBarrel();
+            Physics2D.SyncTransforms();
+            source.TakeDamage(new DamageInfo { amount = 1 });
+            source.TakeDamage(new DamageInfo { amount = 1 });
+            Assert(GetField<Coroutine>(target, "chainReactionRoutine") != null, "Cancellation fixture starts a pending chain.");
+            if (transition == "Pause") manager.PauseGame();
+            // Enter and leave Shop without WaveStarted so wave reset cannot hide a failed cancellation.
+            else if (transition == "Shop") SetGameState(manager, GameState.Shop);
+            else if (transition == "RunReset") GameEvents.RaiseRunReset();
+            else target.enabled = false;
+            Assert(GetField<Coroutine>(target, "chainReactionRoutine") == null, transition + " cancels the pending coroutine immediately.");
+            if (transition == "Pause" || transition == "Shop") yield return Realtime(0.1d);
+            if (transition == "Pause") manager.ResumeGame();
+            else if (transition == "Shop") SetGameState(manager, GameState.Playing);
+            else if (transition == "Disable") target.enabled = true;
+            yield return GameTime(0.15f);
+            Assert(!target.IsExploded && target.HitsRemaining == 2, transition + " does not replay the canceled blast after gameplay resumes.");
+        }
+        target.TakeDamage(new DamageInfo { amount = 1 });
+        Assert(!target.IsExploded && target.HitsRemaining == 1, "A canceled chain still permits ordinary damage afterward.");
+        target.TakeDamage(new DamageInfo { amount = 1 });
+        Assert(target.IsExploded, "The normal two-hit detonation remains usable after cancellation.");
     }
 
     private static EnemyProjectile Shot(PoolManager pool, GameObject template, EnemyBase owner, Vector2 direction)
@@ -466,6 +553,19 @@ public static class M3Verification
             type = type.BaseType;
         }
         throw new MissingFieldException(target.GetType().Name, name);
+    }
+
+    private static T GetField<T>(object target, string name)
+    {
+        FieldInfo field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
+        if (field == null) throw new MissingFieldException(target.GetType().Name, name);
+        return (T)field.GetValue(target);
+    }
+
+    private static void SetGameState(GameManager manager, GameState state)
+    {
+        typeof(GameManager).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(manager, new object[] { state });
     }
 
     private static bool Approximately(float actual, float expected)

@@ -19,6 +19,7 @@ public class GuardBotAI : EnemyBase
     [SerializeField] private Transform[] patrolWaypoints = new Transform[0];
     [SerializeField] private float patrolRadius = 2f;
     [SerializeField] private float waypointTolerance = 0.2f;
+    [SerializeField] private float investigateAfter = 5f;
 
     [Header("Shooting")]
     [SerializeField] private GameObject projectilePrefab;
@@ -34,6 +35,7 @@ public class GuardBotAI : EnemyBase
     private Vector2 sightTarget;
     private float searchUntil;
     private float nextAttackAt;
+    private float patrolElapsed;
 
     public override EnemyType Type => EnemyType.GuardBot;
     protected override int SpawnMaxHP => guardMaxHP;
@@ -48,26 +50,28 @@ public class GuardBotAI : EnemyBase
         lastSeenPosition = Body.position;
         sightTarget = Body.position;
         searchUntil = 0f;
+        patrolElapsed = 0f;
         nextAttackAt = Time.time + attackInterval;
         patrolIndex = 0;
         patrolPositions.Clear();
         if (patrolWaypoints != null)
         {
+            // Snapshot world destinations so child waypoint markers do not travel with the bot.
             foreach (Transform waypoint in patrolWaypoints)
                 if (waypoint != null) patrolPositions.Add(waypoint.position);
         }
         if (patrolPositions.Count == 0)
-        {
-            // Snapshot world destinations so child waypoint markers do not travel with the bot.
-            patrolPositions.Add(Body.position + Vector2.right * patrolRadius);
-            patrolPositions.Add(Body.position - Vector2.right * patrolRadius);
-        }
+            RecenterPatrol();
     }
 
     public override void OnDespawn()
     {
         HasLineOfSight = false;
         state = GuardState.Patrol;
+        searchUntil = 0f;
+        nextAttackAt = 0f;
+        patrolElapsed = 0f;
+        patrolIndex = 0;
         patrolPositions.Clear();
         base.OnDespawn();
     }
@@ -93,6 +97,7 @@ public class GuardBotAI : EnemyBase
 
         if (HasLineOfSight)
         {
+            patrolElapsed = 0f;
             lastSeenPosition = sightTarget;
             state = (lastSeenPosition - Body.position).sqrMagnitude <= attackRange * attackRange
                 ? GuardState.Attack : GuardState.Chase;
@@ -101,11 +106,33 @@ public class GuardBotAI : EnemyBase
         {
             state = GuardState.Search;
             searchUntil = Time.time + searchDuration;
+            patrolElapsed = 0f;
         }
         else if (state == GuardState.Search && Time.time >= searchUntil)
         {
             state = GuardState.Patrol;
+            RecenterPatrol();
         }
+        else if (state == GuardState.Patrol && targetAlive)
+        {
+            patrolElapsed += Time.fixedDeltaTime;
+            if (patrolElapsed >= investigateAfter)
+            {
+                lastSeenPosition = Target.transform.position;
+                state = GuardState.Search;
+                searchUntil = Time.time + searchDuration;
+                patrolElapsed = 0f;
+            }
+        }
+    }
+
+    private void RecenterPatrol()
+    {
+        patrolPositions.Clear();
+        patrolPositions.Add(Body.position + Vector2.right * patrolRadius);
+        patrolPositions.Add(Body.position - Vector2.right * patrolRadius);
+        patrolIndex = 0;
+        patrolElapsed = 0f;
     }
 
     private bool IsSightClear(Vector2 toPlayer)
@@ -215,6 +242,7 @@ public class GuardBotAI : EnemyBase
         searchDuration = Mathf.Max(0f, searchDuration);
         patrolRadius = Mathf.Max(0f, patrolRadius);
         waypointTolerance = Mathf.Max(0.01f, waypointTolerance);
+        investigateAfter = Mathf.Max(0f, investigateAfter);
         fireOffset = Mathf.Max(0f, fireOffset);
         attackInterval = Mathf.Max(0.01f, attackInterval);
     }
