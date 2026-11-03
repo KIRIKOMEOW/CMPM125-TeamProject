@@ -75,7 +75,7 @@ Esc pauses the game at any point during a wave. The shop and all menus pause tim
 
 | Enemy | HP | Behaviour | First wave | Coins |
 | --- | --- | --- | --- | --- |
-| Rusher | 50 | Moves straight at the player and deals 10 contact damage | 1 | 2 |
+| Rusher | 50 | Moves straight at the player and deals 10 contact damage | 1 | 3 |
 | Guard Bot (ranged) | 75 | State machine: Patrol between waypoints, Chase when a raycast sees the player, Attack inside 6 units, Search the last seen spot for 3 s, then Patrol | 3 | 4 |
 | Brute | 200 | Slow, takes half knockback, charges after a 0.8 s wind-up | 6 | 10 |
 

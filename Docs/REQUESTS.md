@@ -28,3 +28,18 @@
 - REVIEW_M1 的三项 M2 附带要求已接入：PlayerController.ApplyUpgrades 及原值恢复、MaxHP +25 满血和血量事件、死亡接 DropTable 与唯一清波计数。
 - 保持波次管理器全程启用，勿在正常战斗中直接 Pool.Return 活敌人；杀死敌人走 IDamageable，清场走 GameManager 的重开/回菜单。
 - 第 3 条飞刃/箱子物理交互仍留在 M3；未提前改动前端 Layer/场景/预制体。
+
+## 2026-11-03 — M2 审查修复与 M3–M5 统一交接
+
+以下覆盖上文按里程碑递进的旧“未实现/暂禁购”说明；既有约定签名保持不变。用户已要求连续完成并交一次统一审查，Unity 保持打开、跳过自动运行验证。
+
+1. REVIEW_M2 已落实：Rusher 默认 3 金币、每批安全刷怪点去重。若前端已序列化 DropTable 的旧值 2，请在 Inspector 改为 3；给刷怪器至少 3 个不同且有机会距玩家 ≥8 的点可维持三只一批，点少时会分批等待。
+2. GuardBotAI/EnemyProjectile：按 API 做 75 HP Guard 和子弹预制体，拖入 WaveSpawner、Guard.ProjectilePrefab。Sight Blocking Layers、Projectile.Blocking Layers 都应包含 World + Prop/Crate；视线/射击间隔等暂定可调值已列 API。CurrentStateName 可供头顶状态标签读取。
+3. Crate/ExplosiveBarrel：箱子 Dynamic、桶 Static、均非 Trigger。Blade.WallLayers 必须加箱子/桶的 Prop 层，HitLayers 覆盖敌人和可伤害桶。飞刃推箱、钉住后跟随、解除后回收穿透已实现；跟随使用局部锚点，不实际挂父子节点。桶爆炸自身隐藏/下一波重现，表现层勿 Destroy 或禁用根对象；爆炸粒子可独立生成。
+4. GameFeel/HitStop 各一个并始终启用；CameraShake 建议使用跟随父节点下独立 Camera 子节点，父缩放 1，其他跟随脚本不要覆盖同一 localPosition。F1 已接入关闭震屏/停顿/闪白，伤害/击退/无敌和音频保留。需要前端配置 Health.flashMaterial、拖尾、粒子、红边等效果并试玩对比。
+5. AudioManager 放独立持久根，填 Sound Effects 的 9 种 SfxId 和 Music Clip，摄像机一个 AudioListener。除 UIClick 外自动监听游戏事件；按钮显式播放 UIClick，音量滑条绑定 MasterVolume。新增 CoinCollected(Vector2 position, int amount) 与对应 Raise 方法，避免监听 CoinsChanged 导致购买/重置误播拾取音。
+6. BruteAI 挂预制体根并拖 WaveSpawner.BrutePrefab；HP 200、击退系数 0.5、蓄力 0.8。Charge Blocking Layers 配 World + Prop/Crate；速度/冲锋范围/时长/伤害的暂定默认值见 API，需前端试玩调整、提供蓄力提示/动画。
+7. 扇形商品已开放：FanThrowAvailable=true，80 金币/上限 1；请撤掉前端“未开放”硬编码，继续使用 CanBuy/GetPrice 等接口。右键每次消耗 3 把、默认 -15/0/+15 度、与左键共用冷却。左右键菜单释放门控均保留；重开恢复未解锁。玩家在已有场景上无需新增组件。
+8. 请 Claude 统一读取 Console 并审查各后端提交；本轮 MCP 仅刷新代码、读取状态/Console，没有启动测试或 Play Mode。M1–M5 自动验证全部标记“待运行”，Unity 关闭后串行执行 API 中命令，结果再写 BACKEND_LOG。正式 10 波完整流程、真实碰撞矩阵、商店/UI、音画与手感尚待前端联调。
+
+本轮脚本与 Unity 自动生成的对应 .meta 分里程碑提交；文档按用户“只提交脚本和 .meta”的范围保留为工作区更新，供同目录审查。Packages/、ProjectSettings/、场景、预制体、美术/音频资产没有纳入后端提交。

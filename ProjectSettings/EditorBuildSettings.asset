@@ -4,5 +4,8 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/NightShift.unity
+    guid: 3f26af3155dfc914f80a4380820894b8
   m_configObjects: {}
