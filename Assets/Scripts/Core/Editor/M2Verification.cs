@@ -371,9 +371,12 @@ public static class M2Verification
             Buy(manager, upgrades, UpgradeType.Heal, 15, 2);
             Assert(player.Health.CurrentHP == 175 && !upgrades.TryBuy(UpgradeType.Heal), "Heal caps at maximum and then rejects purchase.");
             Assert(upgrades.GetPrice(UpgradeType.FanThrow) == 80 && upgrades.GetMaxLevel(UpgradeType.FanThrow) == 1
-                && !upgrades.CanBuy(UpgradeType.FanThrow) && !upgrades.TryBuy(UpgradeType.FanThrow)
-                && !player.FanThrowAvailable && !player.FanThrowUnlocked, "Deferred fan throw cannot charge for an unavailable ability.");
-            Assert(purchases == 13 && coinEvents == 13, "Every successful purchase emits one purchase event and one coin change.");
+                && player.FanThrowAvailable && !player.FanThrowUnlocked, "Fan throw is available as a single eighty-coin unlock.");
+            Buy(manager, upgrades, UpgradeType.FanThrow, 80, 1);
+            Assert(player.FanThrowUnlocked && upgrades.GetPrice(UpgradeType.FanThrow) == -1
+                && !upgrades.CanBuy(UpgradeType.FanThrow) && !upgrades.TryBuy(UpgradeType.FanThrow),
+                "The fan unlock activates the ability and cannot be purchased twice.");
+            Assert(purchases == 14 && coinEvents == 14, "Every successful purchase emits one purchase event and one coin change.");
             player.Health.ResetHealth(175);
             player.Health.ApplyDamage(new DamageInfo { amount = 60 });
             manager.TrySpendCoins(manager.Coins);

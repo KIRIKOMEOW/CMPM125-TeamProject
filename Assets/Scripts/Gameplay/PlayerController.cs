@@ -18,6 +18,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     [SerializeField] private float bladeKnockback = 4f;
     [SerializeField] private float throwInterval = 0.3f;
     [SerializeField] private float spawnOffset = 0.45f;
+    [SerializeField, Range(0f, 90f)] private float fanHalfSpread = 15f;
 
     [Header("Upgrade Effects")]
     [SerializeField] private float throwRatePerLevel = 0.15f;
@@ -49,6 +50,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     private bool hasThrowParameter;
     private bool hasHurtParameter;
     private bool waitForMouseRelease = true;
+    private bool waitForRightMouseRelease = true;
 
     public Health Health { get; private set; }
     public int BladesInHand { get; private set; }
@@ -56,7 +58,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     public float MoveSpeed => moveSpeed;
     public float ThrowInterval => throwInterval;
     public int BladeDamage => bladeDamage;
-    public bool FanThrowAvailable => false;
+    public bool FanThrowAvailable => true;
     public bool FanThrowUnlocked { get; private set; }
     public Vector2 AimDirection { get; private set; } = Vector2.right;
 
@@ -89,6 +91,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         GameEvents.GameStateChanged += OnGameStateChanged;
         GameEvents.RunReset += ResetUpgrades;
         waitForMouseRelease = true;
+        waitForRightMouseRelease = true;
     }
 
     private void OnDisable()
@@ -110,7 +113,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         moveInput = Vector2.ClampMagnitude(new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")), 1f);
         UpdateAim();
         throwRemaining = Mathf.Max(0f, throwRemaining - Time.deltaTime);
-        HandleThrowInput(Input.GetMouseButton(0));
+        HandleAttackInput(Input.GetMouseButton(0), Input.GetMouseButton(1));
         if (Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.Space)) recall.TryRecall();
         if (hasSpeedParameter) animator.SetFloat("Speed", moveInput.magnitude);
     }
@@ -118,7 +121,28 @@ public class PlayerController : MonoBehaviour, IDamageable
     private void OnGameStateChanged(GameState state)
     {
         if (state == GameState.Playing)
+        {
             waitForMouseRelease = true;
+            waitForRightMouseRelease = true;
+        }
+    }
+
+    private void HandleAttackInput(bool leftMouseHeld, bool rightMouseHeld)
+    {
+        HandleFanThrowInput(rightMouseHeld);
+        // The right button owns this input frame even if fewer than three blades remain.
+        if (!rightMouseHeld || !FanThrowUnlocked || !leftMouseHeld)
+            HandleThrowInput(leftMouseHeld);
+    }
+
+    private void HandleFanThrowInput(bool rightMouseHeld)
+    {
+        if (waitForRightMouseRelease)
+        {
+            if (!rightMouseHeld) waitForRightMouseRelease = false;
+            return;
+        }
+        if (rightMouseHeld) TryFanThrow();
     }
 
     private void HandleThrowInput(bool leftMouseHeld)
@@ -170,14 +194,14 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     public bool TryThrow()
     {
-        if (!IsPlaying || Health.IsDead || BladesInHand <= 0 || throwRemaining > 0f || bladePrefab == null || PoolManager.Instance == null)
+        if (!CanThrow(1))
             return false;
 
         Vector2 position = throwPoint != null ? (Vector2)throwPoint.position : body.position + AimDirection * spawnOffset;
         GameObject instance = PoolManager.Instance.Get(bladePrefab, position, Quaternion.identity);
         if (instance == null) return false;
         Blade blade = instance.GetComponent<Blade>();
-        if (blade == null)
+        if (blade == null || !blade.isActiveAndEnabled)
         {
             PoolManager.Instance.Return(instance);
             return false;
@@ -191,6 +215,61 @@ public class PlayerController : MonoBehaviour, IDamageable
         GameEvents.RaiseBladeThrown(blade.transform.position);
         if (hasThrowParameter) animator.SetTrigger("Throw");
         return true;
+    }
+
+    public bool TryFanThrow()
+    {
+        if (!FanThrowUnlocked || !CanThrow(3))
+            return false;
+
+        PoolManager pool = PoolManager.Instance;
+        Blade[] blades = new Blade[3];
+        Vector2[] directions = new Vector2[3];
+        for (int i = 0; i < blades.Length; i++)
+        {
+            directions[i] = Quaternion.Euler(0f, 0f, (i - 1) * fanHalfSpread) * AimDirection;
+            Vector2 position = throwPoint != null ? (Vector2)throwPoint.position : body.position + directions[i] * spawnOffset;
+            GameObject instance = pool.Get(bladePrefab, position, Quaternion.identity);
+            if (instance != null)
+                blades[i] = instance.GetComponent<Blade>();
+            if (blades[i] != null && blades[i].isActiveAndEnabled)
+                continue;
+
+            if (instance != null) pool.Return(instance);
+            ReturnUnlaunchedBlades(pool, blades);
+            return false;
+        }
+
+        // Reserve all three valid instances before changing ammunition or the shared cooldown.
+        if (!FanThrowUnlocked || !CanThrow(3))
+        {
+            ReturnUnlaunchedBlades(pool, blades);
+            return false;
+        }
+        foreach (Blade blade in blades)
+            activeBlades.Add(blade);
+        BladesInHand -= blades.Length;
+        throwRemaining = throwInterval;
+        for (int i = 0; i < blades.Length; i++)
+            blades[i].Launch(this, directions[i], bladeDamage, bladeKnockback);
+
+        GameEvents.RaiseBladesChanged(BladesInHand, maxBlades);
+        foreach (Blade blade in blades)
+            GameEvents.RaiseBladeThrown(blade.transform.position);
+        if (hasThrowParameter) animator.SetTrigger("Throw");
+        return true;
+    }
+
+    private bool CanThrow(int count)
+    {
+        return IsPlaying && !Health.IsDead && BladesInHand >= count && throwRemaining <= 0f
+            && bladePrefab != null && PoolManager.Instance != null;
+    }
+
+    private static void ReturnUnlaunchedBlades(PoolManager pool, Blade[] blades)
+    {
+        foreach (Blade blade in blades)
+            if (blade != null) pool.Return(blade.gameObject);
     }
 
     public void TakeDamage(DamageInfo info)
@@ -251,6 +330,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         throwRemaining = 0f;
         knockbackRemaining = 0f;
         waitForMouseRelease = true;
+        waitForRightMouseRelease = true;
         AimDirection = Vector2.right;
         body.position = spawnPosition;
         body.linearVelocity = Vector2.zero;
@@ -311,6 +391,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         bladeKnockback = Mathf.Max(0f, bladeKnockback);
         throwInterval = Mathf.Max(0.01f, throwInterval);
         spawnOffset = Mathf.Max(0f, spawnOffset);
+        fanHalfSpread = Mathf.Clamp(fanHalfSpread, 0f, 90f);
         throwRatePerLevel = Mathf.Max(0f, throwRatePerLevel);
         damagePerLevel = Mathf.Max(0, damagePerLevel);
         maxHPPerLevel = Mathf.Max(0, maxHPPerLevel);

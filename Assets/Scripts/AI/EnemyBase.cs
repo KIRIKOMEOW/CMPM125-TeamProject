@@ -33,6 +33,7 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
     protected Rigidbody2D Body => body;
     protected PlayerController Target => target;
     protected virtual int SpawnMaxHP => maxHP;
+    protected virtual float BaseMoveSpeed => baseMoveSpeed;
     protected virtual float KnockbackScale => knockbackMultiplier;
     protected bool CanAct => spawned && !deathHandled && health != null && !health.IsDead
         && GameManager.Instance != null && GameManager.Instance.State == GameState.Playing;
@@ -86,7 +87,7 @@ public abstract class EnemyBase : MonoBehaviour, IDamageable, IPoolable
     {
         target = player;
         float bonus = Mathf.Min(0.4f, Mathf.Max(0, wave - 1) * 0.05f);
-        MoveSpeed = Mathf.Max(0f, baseMoveSpeed) * (1f + bonus);
+        MoveSpeed = Mathf.Max(0f, BaseMoveSpeed) * (1f + bonus);
     }
 
     public virtual void OnDespawn()
